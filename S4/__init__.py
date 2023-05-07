@@ -2,6 +2,7 @@
 # Main component in SaShiMi architecture.
 
 import torch
+import torch.nn.functional as F
 
 
 def init_HiPPO(size: int):
@@ -121,4 +122,36 @@ def conv_kernel_DPLR(Lambda, P, Q, B, C, step, L):
     evaluated = (2.0 / (1.0 + Omega)) * (k00 - k01 * (1.0 / (1.0 + k11)) * k10)
     out = torch.fft.ifft(evaluated, L)
     return out.real
+
+
+def convolve(u: torch.Tensor, K: torch.Tensor):
+    """
+    Apply convolution on u with kernel K. Operates on the last dimension.
+
+    Uses the Convolution Theorem.
+    Convolution of 2 signals is the product of their Fourier transforms.
+    """
+    l_max = u.size(dim=-1)
+    ud = torch.fft.rfft(F.pad(u.float(), pad=(0, l_max)), dim=-1)
+    Kd = torch.fft.rfft(F.pad(K.float(), pad=(0, l_max)), dim=-1)
+    product = ud * Kd
+    return torch.fft.irfft(product)[..., :l_max]
+
+
+def run_recurrent_SSM(Ab, Bb, Cb, u, x0=None):
+    """
+    Run the discretized SSM with given parameters on input signal u with initial x0.
+    """
+    x = x0 if x0 is not None else torch.zeros(Ab.size(dim=0))
+    x = x.to(torch.complex64)
+    u = u.to(torch.complex64)
+    Bb = Bb.unsqueeze(1)
+    X, Y = [], []
+    for u_k in u:
+        x = Ab @ x + Bb @ u_k
+        y = Cb @ x
+        X.append(x)
+        Y.append(y)
+
+    return torch.cat(X), torch.cat(Y)
 
