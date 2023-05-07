@@ -7,6 +7,8 @@ import torch
 def init_HiPPO(size: int):
     """
     Initialize HiPPO (High-Order Polynomial Projection Operator) matrix.
+
+    Equation 2 in "Efficiently Modeling Long Sequences with Structured State Spaces".
     """
     hippo = torch.zeros(size, size)
     for k in range(size):
@@ -58,6 +60,7 @@ def init_DPLR_HiPPO(N):
 def discretize_SSM(A, B, C, step):
     """
     Discretize the given State Space Model (SSM) with the given step size.
+
     Equation 3 in "Efficiently Modeling Long Sequences with Structured State Spaces".
     """
     I = torch.eye(A.shape[0])
@@ -73,6 +76,8 @@ def conv_kernel_naive(A, B, C, L):
     """
     Get convolution kernel from discretized SSM parameters.
     Naive implementation for testing.
+
+    Equation 4 and 5 in "Efficiently Modeling Long Sequences with Structured State Spaces".
     """
     return torch.cat([C @ torch.linalg.matrix_power(A, i) @ B for i in range(L)])
 
