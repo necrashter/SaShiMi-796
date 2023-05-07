@@ -55,6 +55,28 @@ def init_DPLR_HiPPO(N):
     return Lambda, V, P, B
 
 
+def discretize_SSM(A, B, C, step):
+    """
+    Discretize the given State Space Model (SSM) with the given step size.
+    Equation 3 in "Efficiently Modeling Long Sequences with Structured State Spaces".
+    """
+    I = torch.eye(A.shape[0])
+    # Common term in A and B equations
+    left = torch.linalg.inv(I - (step / 2.0) * A)
+    A = left @ (I + (step / 2.0) * A)
+    B = (left * step) @ B
+    # C stays the same
+    return A, B, C
+
+
+def conv_kernel_naive(A, B, C, L):
+    """
+    Get convolution kernel from discretized SSM parameters.
+    Naive implementation for testing.
+    """
+    return torch.cat([C @ torch.linalg.matrix_power(A, i) @ B for i in range(L)])
+
+
 def get_roots_of_unity(L: int):
     """
     Get the roots of unity at which the SSM generating function is evaluated.
