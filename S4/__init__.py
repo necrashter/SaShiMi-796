@@ -54,3 +54,44 @@ def init_DPLR_HiPPO(N):
     B = Vc @ B.to(torch.complex64)
     return Lambda, V, P, B
 
+
+def get_roots_of_unity(L: int):
+    """
+    Get the roots of unity at which the SSM generating function is evaluated.
+    - L: input length.
+
+    See Lemma C.2 in "Efficiently Modeling Long Sequences with Structured State Spaces".
+    """
+    return torch.exp(-2j * torch.pi * (torch.arange(L) / L))
+
+
+def conv_kernel_DPLR(Lambda, P, Q, B, C, step, L):
+    """
+    Get convolution kernel from DPLR model parameters.
+    - Lambda, P, Q, B, C: Model parameters (Complex Tensors)
+    - step: Step size
+    - L: Input length
+
+    This is almost the same as Algorithm 1 in "Efficiently Modeling Long Sequences with
+    Structured State Spaces". However, the first step that transforms C is skipped. The
+    model can learn the transformed C in practice.
+    """
+    # Roots of unith at which SSM generating function is evaluated.
+    Omega = get_roots_of_unity(L)
+
+    a0, a1 = (C.conj(), Q.conj())
+    b0, b1 = (B, P)
+
+    g = (2.0 / step) * ((1.0 - Omega) / (1.0 + Omega))
+    # Denominator in Cauchy dot product
+    cauchy_denominator = g.unsqueeze(1) - Lambda
+    # Cauchy dot products
+    k00 = (a0 * b0 / cauchy_denominator).sum(dim=-1)
+    k01 = (a0 * b1 / cauchy_denominator).sum(dim=-1)
+    k10 = (a1 * b0 / cauchy_denominator).sum(dim=-1)
+    k11 = (a1 * b1 / cauchy_denominator).sum(dim=-1)
+
+    evaluated = (2.0 / (1.0 + Omega)) * (k00 - k01 * (1.0 / (1.0 + k11)) * k10)
+    out = torch.fft.ifft(evaluated, L)
+    return out.real
+
