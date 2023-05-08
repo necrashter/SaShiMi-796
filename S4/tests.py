@@ -64,7 +64,6 @@ class TestS4Components(unittest.TestCase):
 
         self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
 
-
     def test_conv_and_recurrent_DPLR(self):
         """
         Test whether the result of convolution is equivalent to the recurrent method in DPLR.
@@ -89,6 +88,20 @@ class TestS4Components(unittest.TestCase):
         recurrent_out = run_recurrent_SSM(Ab, Bb, Cb, u.unsqueeze(1))[1]
         conv_out = convolve(u, K)
         self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
+
+    def test_S4Conv_S4Recurrent_equivalence(self):
+        L = 16
+        s4 = S4Base(4)
+        s4conv = S4Conv(s4)
+        s4recurrent = S4Recurrent(s4)
+
+        # Generate random input
+        u = torch.randn(L)
+        # Test both approaches
+        conv_out = s4conv(u)
+        recurrent_out = s4recurrent(u)
+        self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
+
 
 if __name__ == '__main__':
     unittest.main()

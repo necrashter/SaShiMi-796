@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn.functional as F
+from torch import nn
 
 
 def init_HiPPO(size: int):
@@ -192,4 +193,65 @@ def run_recurrent_SSM(Ab, Bb, Cb, u, x0=None):
         Y.append(y)
 
     return torch.cat(X), torch.cat(Y)
+
+
+class S4Base(nn.Module):
+    """
+    Abstract container class S4 for parameters. It represents a SSM in DPLR form.
+    """
+    def __init__(self, state_dim: int):
+        """
+        Initialize S4.
+        - state_dim: Number of dimensions in inner state.
+        """
+        super().__init__()
+        Lambda, _, P, B = init_DPLR_HiPPO(state_dim)
+        self.Lambda = nn.parameter.Parameter(Lambda)
+        self.P = nn.parameter.Parameter(P)
+        self.B = nn.parameter.Parameter(B)
+
+        self.C = nn.parameter.Parameter(torch.empty(1, state_dim, dtype=torch.complex64))
+        nn.init.xavier_normal_(self.C)
+
+        # D is like a skip connection, hence initialize with 1's
+        self.D = nn.parameter.Parameter(torch.ones(1))
+
+        # Step size is a learnable parameter but stored as log.
+        self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1))
+
+    def get_conv_kernel(self, L):
+        step = self.log_step.exp()
+        return conv_kernel_DPLR(self.Lambda, self.P, self.P, self.B, self.C, step, L)
+
+    def discretize(self, L):
+        step = self.log_step.exp()
+        return discretize_DPLR(self.Lambda, self.P, self.P, self.B, self.C, step, L)
+
+
+class S4Conv(nn.Module):
+    """
+    S4 layer in convolution mode.
+    """
+    def __init__(self, base: S4Base):
+        super().__init__()
+        self.base = base
+
+    def forward(self, u: torch.Tensor):
+        K = self.base.get_conv_kernel(u.size(dim=-1))
+        return convolve(u, K) + self.base.D * u
+
+
+class S4Recurrent(nn.Module):
+    """
+    S4 layer in recurrent mode.
+    """
+    def __init__(self, base: S4Base):
+        super().__init__()
+        self.base = base
+
+    def forward(self, u: torch.Tensor):
+        Ab, Bb, Cb = self.base.discretize(u.size(dim=-1))
+        # States are ignored
+        _, out = run_recurrent_SSM(Ab, Bb, Cb, u.unsqueeze(1))
+        return out + self.base.D * u
 
