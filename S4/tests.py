@@ -52,21 +52,43 @@ class TestS4Components(unittest.TestCase):
         C = torch.randn(1, 4, dtype=torch.complex64)
         Ab, Bb, Cb = discretize_SSM(A, B, C, 1.0 / L)
 
-        # Recurrent method
+        # Generate random input
         u = torch.randn(L)
-        recurrent_out = run_recurrent_SSM(Ab, Bb, Cb.conj(), u.unsqueeze(1))[1]
+
+        # Recurrent method
+        recurrent_out = run_recurrent_SSM(Ab, Bb, Cb, u.unsqueeze(1))[1]
 
         # Convolutional method
-        # Naive kernel
-        K_naive = conv_kernel_naive(Ab, Bb, Cb.conj(), L)
-        # DPLR convolution kernel
-        C = (torch.eye(4) - torch.linalg.matrix_power(Ab, L)).conj().T @ Cb.flatten()
-        K = conv_kernel_DPLR(Lambda, P, P, B, C, step=1.0 / L, L=L)
-        self.assertTrue(torch.allclose(K_naive.real, K, atol=1e-5, rtol=1e-5))
+        K = conv_kernel_naive(Ab, Bb, Cb, L)
         conv_out = convolve(u, K)
 
         self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
 
+
+    def test_conv_and_recurrent_DPLR(self):
+        """
+        Test whether the result of convolution is equivalent to the recurrent method in DPLR.
+        """
+        L = 16
+        step = 1.0 / L
+        Lambda, P, P, B = init_DPLR_HiPPO(4)
+        C = torch.randn(1, 4, dtype=torch.complex64)
+
+        # Convolution kernel
+        K = conv_kernel_DPLR(Lambda, P, P, B, C, step, L)
+
+        # Recurrent form
+        Ab, Bb, Cb = discretize_DPLR(Lambda, P, P, B, C, step, L)
+        # Compare convolution kernel computed from recurrent form with the previous one.
+        K_naive = conv_kernel_naive(Ab, Bb, Cb, L).flatten()
+        self.assertTrue(torch.allclose(K_naive.real, K, atol=1e-5, rtol=1e-5))
+
+        # Generate random input
+        u = torch.randn(L)
+        # Test both approaches
+        recurrent_out = run_recurrent_SSM(Ab, Bb, Cb, u.unsqueeze(1))[1]
+        conv_out = convolve(u, K)
+        self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
 
 if __name__ == '__main__':
     unittest.main()

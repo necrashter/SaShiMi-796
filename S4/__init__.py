@@ -180,9 +180,10 @@ def run_recurrent_SSM(Ab, Bb, Cb, u, x0=None):
     Run the discretized SSM with given parameters on input signal u with initial x0.
     """
     x = x0 if x0 is not None else torch.zeros(Ab.size(dim=0))
-    x = x.to(torch.complex64)
-    u = u.to(torch.complex64)
-    Bb = Bb.unsqueeze(1)
+    x = x.to(Ab.dtype)
+    u = u.to(Ab.dtype)
+    if len(Bb.size()) < 2:
+        Bb = Bb.unsqueeze(1)
     X, Y = [], []
     for u_k in u:
         x = Ab @ x + Bb @ u_k
