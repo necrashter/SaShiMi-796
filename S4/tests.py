@@ -92,14 +92,12 @@ class TestS4Components(unittest.TestCase):
     def test_S4Conv_S4Recurrent_equivalence(self):
         L = 16
         s4 = S4Base(4)
-        s4conv = S4Conv(s4)
-        s4recurrent = S4Recurrent(s4)
 
         # Generate random input
         u = torch.randn(L)
         # Test both approaches
-        conv_out = s4conv(u)
-        recurrent_out = s4recurrent(u)
+        conv_out = s4.convolutional_forward(u)
+        recurrent_out = s4.recurrent_forward(u)
         self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
 
 

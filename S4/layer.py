@@ -197,7 +197,7 @@ def run_recurrent_SSM(Ab, Bb, Cb, u, x0=None):
 
 class S4Base(nn.Module):
     """
-    Abstract container class S4 for parameters. It represents a SSM in DPLR form.
+    An S4 layer module. It represents an SSM in DPLR form.
     """
     def __init__(self, state_dim: int):
         """
@@ -227,31 +227,26 @@ class S4Base(nn.Module):
         step = self.log_step.exp()
         return discretize_DPLR(self.Lambda, self.P, self.P, self.B, self.C, step, L)
 
+    def convolutional_forward(self, u: torch.Tensor):
+        """
+        Forward pass of the network with convolutional method.
+        """
+        K = self.get_conv_kernel(u.size(dim=-1))
+        return convolve(u, K) + self.D * u
 
-class S4Conv(nn.Module):
-    """
-    S4 layer in convolution mode.
-    """
-    def __init__(self, base: S4Base):
-        super().__init__()
-        self.base = base
-
-    def forward(self, u: torch.Tensor):
-        K = self.base.get_conv_kernel(u.size(dim=-1))
-        return convolve(u, K) + self.base.D * u
-
-
-class S4Recurrent(nn.Module):
-    """
-    S4 layer in recurrent mode.
-    """
-    def __init__(self, base: S4Base):
-        super().__init__()
-        self.base = base
-
-    def forward(self, u: torch.Tensor):
-        Ab, Bb, Cb = self.base.discretize(u.size(dim=-1))
+    def recurrent_forward(self, u: torch.Tensor):
+        """
+        Forward pass of the network with recurrent method.
+        """
+        Ab, Bb, Cb = self.discretize(u.size(dim=-1))
         # States are ignored
         _, out = run_recurrent_SSM(Ab, Bb, Cb, u.unsqueeze(1))
-        return out + self.base.D * u
+        return out + self.D * u
+
+    def forward(self, u: torch.Tensor):
+        """
+        By default, forward pass is executed with convolutional method for better
+        runtime performance.
+        """
+        return self.convolutional_forward(u)
 
