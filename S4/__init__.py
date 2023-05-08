@@ -73,6 +73,43 @@ def discretize_SSM(A, B, C, step):
     return A, B, C
 
 
+def discretize_DPLR(Lambda, P, Q, B, C, step, L):
+    """
+    Discretize the given SSM in DPRL representation with the given step size.
+    - Lambda, P, Q, B, C: Model parameters (Complex Tensors)
+    - step: Step size
+    - L: Input length
+
+    See Appendix C.2 in "Efficiently Modeling Long Sequences with Structured State Spaces".
+    """
+    # Convert to matrices
+    if len(P.size()) < 2:
+        P = P.unsqueeze(1)
+    if len(Q.size()) < 2:
+        Q = Q.unsqueeze(1)
+    # Conjugate transpose of Q
+    Qstar = Q.conj().T
+    # Build A matrix in SSM from DPLR parameters
+    A = torch.diag(Lambda) - P @ Qstar
+    I = torch.eye(Lambda.size(dim=0))
+
+    # Forward discretization
+    A0 = I * (2.0 / step) + A
+
+    # Backward discretization
+    D = torch.diag(1.0 / ((2.0 / step) - Lambda))
+    A1 = D - (D @ P * (1.0 / (1 + (Qstar @ D @ P))) * Qstar @ D)
+
+    # S4 Recurrence
+    Ab = A1 @ A0
+    Bb = 2 * A1 @ B.unsqueeze(1)
+
+    # Note that we don't learn C directly, we learn C^~, the result of the first step in
+    # Algorithm 1. Therefore, we need to get the actual C bar from C^~.
+    Cb = C.conj() @ torch.linalg.inv(I - torch.linalg.matrix_power(Ab, L))
+    return Ab, Bb, Cb
+
+
 def conv_kernel_naive(A, B, C, L):
     """
     Get convolution kernel from discretized SSM parameters.
