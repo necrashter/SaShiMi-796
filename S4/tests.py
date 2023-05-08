@@ -1,5 +1,5 @@
 import unittest
-from __init__ import *
+from layer import *
 
 
 class TestS4Components(unittest.TestCase):

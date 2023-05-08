@@ -1,6 +1,6 @@
-# Implementation of S4 block.
-# Main component in SaShiMi architecture.
-
+"""
+Implementation of S4 layer with related components.
+"""
 import torch
 import torch.nn.functional as F
 from torch import nn
