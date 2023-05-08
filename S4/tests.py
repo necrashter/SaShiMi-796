@@ -100,6 +100,15 @@ class TestS4Components(unittest.TestCase):
         recurrent_out = s4.recurrent_forward(u)
         self.assertTrue(torch.allclose(recurrent_out.real, conv_out.real, atol=1e-5, rtol=1e-5))
 
+    def test_S4Conv_batch(self):
+        L = 16
+        s4 = S4Base(4)
+        # Generate random input
+        us = [torch.randn(L) for _ in range(4)]
+        combined_out = torch.cat([s4(u).reshape(1, -1) for u in us], dim=0)
+        batched_out = s4(torch.cat([u.reshape(1, -1) for u in us], dim=0))
+        self.assertTrue(torch.allclose(combined_out.real, batched_out.real, atol=1e-5, rtol=1e-5))
+
 
 if __name__ == '__main__':
     unittest.main()
