@@ -169,8 +169,8 @@ def convolve(u: torch.Tensor, K: torch.Tensor):
     Convolution of 2 signals is the product of their Fourier transforms.
     """
     l_max = u.size(dim=-1)
-    ud = torch.fft.rfft(F.pad(u.float(), pad=(0, l_max)), dim=-1)
-    Kd = torch.fft.rfft(F.pad(K.float(), pad=(0, l_max)), dim=-1)
+    ud = torch.fft.rfft(F.pad(u.real, pad=(0, l_max)), dim=-1)
+    Kd = torch.fft.rfft(F.pad(K.real, pad=(0, l_max)), dim=-1)
     product = ud * Kd
     return torch.fft.irfft(product)[..., :l_max]
 

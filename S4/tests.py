@@ -71,7 +71,7 @@ class TestS4Components(unittest.TestCase):
         """
         L = 16
         step = 1.0 / L
-        Lambda, P, P, B = init_DPLR_HiPPO(4)
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
         C = torch.randn(1, 4, dtype=torch.complex64)
 
         # Convolution kernel
