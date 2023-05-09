@@ -1,5 +1,6 @@
 import unittest
 from . layer import *
+from . block import *
 
 
 class TestS4Components(unittest.TestCase):
@@ -209,4 +210,11 @@ class TestS4Components(unittest.TestCase):
         self.assertTrue(torch.allclose(co.real, ro.real, atol=1e-5, rtol=1e-5))
         self.assertEqual(co.size(), u.size())
         self.assertEqual(ro.size(), u.size())
+
+    def test_S4Block_dimensions(self):
+        L = 16
+        s4block = S4Block(2, 4)
+        x = torch.randn(L, 2)
+        y = s4block(x)
+        self.assertEqual(x.size(), y.size())
 
