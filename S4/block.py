@@ -72,3 +72,17 @@ class S4Block(nn.Module):
         b = self.pass2(a) + a
         return b
 
+    def get_recurrent_runner(self, L: int):
+        """
+        Discretize the model with given L and return a stateful function that maps the input
+        signal to output signal one sample at a time.
+        """
+        s4 = self.s4.get_recurrent_runner(L)
+
+        def f(u):
+            a = self.pass1post(s4(self.pass1pre(u))) + u
+            b = self.pass2(a) + a
+            return b
+
+        return f
+

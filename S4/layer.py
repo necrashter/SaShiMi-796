@@ -308,3 +308,21 @@ class S4Base(nn.Module):
         """
         return self.convolutional_forward(u)
 
+    def get_recurrent_runner(self, L: int):
+        """
+        Discretize the model with given L and return a stateful function that maps the input
+        signal to output signal one sample at a time.
+        """
+        Ab, Bb, Cb = self.discretize(L)
+        Ct = Cb.T
+        x = torch.zeros(Ab.size(dim=0), Bb.size(dim=-1))
+        x = x.to(Ab.dtype)
+
+        def f(u):
+            nonlocal x
+            x = Ab @ x + Bb * u
+            y = torch.sum(Ct * x, dim=0).flatten()
+            return y.real
+
+        return f
+

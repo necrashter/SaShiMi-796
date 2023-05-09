@@ -218,3 +218,12 @@ class TestS4Components(unittest.TestCase):
         y = s4block(x)
         self.assertEqual(x.size(), y.size())
 
+    def test_recurrent_runner(self):
+        L = 16
+        s4 = S4Block(2, 4)
+        u = torch.randn(L, 2)
+        o = s4(u)
+        f = s4.get_recurrent_runner(L)
+        o2 = torch.stack([f(i) for i in u])
+        self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
+
