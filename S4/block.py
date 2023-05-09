@@ -63,29 +63,12 @@ class S4Block(nn.Module):
         )
         # Residual connection from the beginning of pass2 to end of pass2
 
-    def pass1(self, u):
-        """
-        Run the first pass of the network.
-        For batch size B, input sequence length L, and input dimensions D, the argument is:
-        - u: Input torch.Tensor of size BxLxD or LxD
-
-        Note that residual connection is NOT applied! Applied layers:
-        1. LayerNorm
-        2. S4 Layer
-        3. GELU
-        4. Linear
-        """
-        o = self.pass1pre(u)
-        o = self.s4(o)
-        o = self.pass1post(o)
-        return o
-
     def forward(self, u):
         """
         For batch size B, input sequence length L, and input dimensions D, the argument is:
         - u: Input torch.Tensor of size BxLxD or LxD
         """
-        a = self.pass1(u) + u
+        a = self.pass1post(self.s4(self.pass1pre(u))) + u
         b = self.pass2(a) + a
         return b
 
