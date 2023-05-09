@@ -239,12 +239,16 @@ class S4Base(nn.Module):
         """
         super().__init__()
         Lambda, _, P, B = init_DPLR_HiPPO(signal_dim, state_dim)
-        self.Lambda = nn.parameter.Parameter(Lambda)
-        self.P = nn.parameter.Parameter(P)
-        self.B = nn.parameter.Parameter(B)
+        # We need to store complex tensors as real tensors, otherwise some optimizers
+        # (e.g. Adam) won't work. view_as_real returns an alias tensor with an additional
+        # dimension (of size = 2, at the end) for real and complex parts.
+        self.Lambda = nn.parameter.Parameter(torch.view_as_real(Lambda.resolve_conj()))
+        self.P = nn.parameter.Parameter(torch.view_as_real(P.resolve_conj()))
+        self.B = nn.parameter.Parameter(torch.view_as_real(B.resolve_conj()))
 
-        self.C = nn.parameter.Parameter(torch.empty(1, state_dim, dtype=torch.complex64))
-        nn.init.xavier_normal_(self.C)
+        C = torch.empty(1, state_dim, dtype=torch.complex64)
+        nn.init.xavier_normal_(C)
+        self.C = nn.parameter.Parameter(torch.view_as_real(C))
 
         # D is like a skip connection, hence initialize with 1's
         self.D = nn.parameter.Parameter(torch.ones(1))
@@ -254,11 +258,19 @@ class S4Base(nn.Module):
 
     def get_conv_kernel(self, L):
         step = self.log_step.exp()
-        return conv_kernel_DPLR(self.Lambda, self.P, self.P, self.B, self.C, step, L)
+        Lambda = torch.view_as_complex(self.Lambda)
+        P = torch.view_as_complex(self.P)
+        B = torch.view_as_complex(self.B)
+        C = torch.view_as_complex(self.C)
+        return conv_kernel_DPLR(Lambda, P, P, B, C, step, L)
 
     def discretize(self, L):
         step = self.log_step.exp()
-        return discretize_DPLR(self.Lambda, self.P, self.P, self.B, self.C, step, L)
+        Lambda = torch.view_as_complex(self.Lambda)
+        P = torch.view_as_complex(self.P)
+        B = torch.view_as_complex(self.B)
+        C = torch.view_as_complex(self.C)
+        return discretize_DPLR(Lambda, P, P, B, C, step, L)
 
     def convolutional_forward(self, u: torch.Tensor):
         """
