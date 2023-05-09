@@ -1,5 +1,5 @@
 import unittest
-from layer import *
+from . layer import *
 
 
 class TestS4Components(unittest.TestCase):
@@ -210,6 +210,3 @@ class TestS4Components(unittest.TestCase):
         self.assertEqual(co.size(), u.size())
         self.assertEqual(ro.size(), u.size())
 
-
-if __name__ == '__main__':
-    unittest.main()
