@@ -1,13 +1,87 @@
 """
 Contains the implementation of S4 block module.
 """
+import torch
 from torch import nn
 from . layer import S4Base
 
 
-class S4Block(nn.Module):
+class Lambda(nn.Module):
     """
-    Implementation of an S4 block.
+    A utility layer that applies the given function.
+    """
+    def __init__(self, func):
+        super().__init__()
+        self.func = func
+
+    def forward(self, x):
+        return self.func(x)
+
+
+class Sequential(nn.Sequential):
+    """
+    A sequential NN block that accounts for the S4 layers when generating samples.
+    Subclass of `torch.nn.Sequential`.
+    """
+    def get_recurrent_runner(self, L: int):
+        """
+        Discretize the model with given L and return a function that maps state and input to
+        the new state and input.
+        """
+        layers = [
+            layer.get_recurrent_runner(L) if hasattr(layer, "get_recurrent_runner") else layer
+            for layer in self
+        ]
+
+        def f(u):
+            for layer in layers:
+                u = layer(u)
+            return u
+
+        return f
+
+    def autoregressive_sample(self, samples: int, signal):
+        """
+        Sample in autoregressive fashion: feed the output of the previous iteration as input.
+        - samples: Number of new samples
+        - signal: Starting signal of shape LxD where L is the length, D is dimension
+        """
+        L = (samples + signal.size(dim=-2)) if signal is not None else samples
+        f = self.get_recurrent_runner(L)
+
+        # Process the given signal
+        for s in signal:
+            u = f(s)
+
+        # Generate the new part
+        Y = []
+        for _ in range(samples):
+            y = f(u)
+            Y.append(y)
+            u = y
+
+        generated = torch.stack(Y).real
+        if signal is not None:
+            return torch.cat([signal, generated], dim=0)
+        else:
+            return generated
+
+
+class Residual(Sequential):
+    """
+    A sequential block with a residual connection from its beginning to the end.
+    """
+    def forward(self, x):
+        return super().forward(x) + x
+
+
+def S4Block(signal_dim: int, state_dim: int, expansion_factor: int = 2):
+    """
+    Construct the full S4 block given in SaShiMi paper. Arguments:
+    - signal_dim: Number of dimensions in the signal.
+    - state_dim: Number of dimensions in inner state.
+    - expansion_factor: The factor by which the number of dimensions will be multiplied
+                        between two linear layers in the second pass.
 
     High-level Architecture
     -----------------------
@@ -34,55 +108,17 @@ class S4Block(nn.Module):
     All linear layers are position-wise, i.e., they operate on the signal dimensions, not
     the time dimension.
     """
-
-    def __init__(self, signal_dim: int, state_dim: int, expansion_factor: int = 2):
-        """
-        Construct a full S4 block. Arguments:
-        - signal_dim: Number of dimensions in the signal.
-        - state_dim: Number of dimensions in inner state.
-        - expansion_factor: The factor by which the number of dimensions will be multiplied
-                            between two linear layers in the second pass.
-        """
-        super().__init__()
-        # Pass1 before S4
-        self.pass1pre = nn.LayerNorm(signal_dim)
-        # S4 Layer
-        self.s4 = S4Base(signal_dim, state_dim)
-        # Pass1 after S4
-        self.pass1post = nn.Sequential(
+    return Sequential(
+        Residual(
+            nn.LayerNorm(signal_dim),
+            S4Base(signal_dim, state_dim),
             nn.GELU(),
             nn.Linear(signal_dim, signal_dim),
-        )
-        # Residual connection from the beginning of pass1 to end of pass1
-
-        self.pass2 = nn.Sequential(
+        ),
+        Residual(
             nn.LayerNorm(signal_dim),
             nn.Linear(signal_dim, signal_dim * expansion_factor),
             nn.GELU(),
             nn.Linear(signal_dim * expansion_factor, signal_dim),
-        )
-        # Residual connection from the beginning of pass2 to end of pass2
-
-    def forward(self, u):
-        """
-        For batch size B, input sequence length L, and input dimensions D, the argument is:
-        - u: Input torch.Tensor of size BxLxD or LxD
-        """
-        a = self.pass1post(self.s4(self.pass1pre(u))) + u
-        b = self.pass2(a) + a
-        return b
-
-    def get_recurrent_runner(self, L: int):
-        """
-        Discretize the model with given L and return a stateful function that maps the input
-        signal to output signal one sample at a time.
-        """
-        s4 = self.s4.get_recurrent_runner(L)
-
-        def f(u):
-            a = self.pass1post(s4(self.pass1pre(u))) + u
-            b = self.pass2(a) + a
-            return b
-
-        return f
-
+        ),
+    )
