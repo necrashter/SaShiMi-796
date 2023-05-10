@@ -94,7 +94,7 @@ def discretize_DPLR(Lambda, P, Q, B, C, step, L):
     Qstar = Q.conj().T
     # Build A matrix in SSM from DPLR parameters
     A = torch.diag(Lambda) - P @ Qstar
-    I = torch.eye(Lambda.size(dim=0))
+    I = torch.eye(Lambda.size(dim=0), device=Lambda.device)
 
     # Forward discretization
     A0 = I * (2.0 / step) + A
@@ -134,22 +134,24 @@ def conv_kernel_naive(A, B, C, L):
     ])
 
 
-def get_roots_of_unity(L: int):
+def get_roots_of_unity(L: int, **kwargs):
     """
     Get the roots of unity at which the SSM generating function is evaluated.
     - L: input length.
+    - **kwargs: Keyword arguments for torch.arange function.
 
     See Lemma C.2 in "Efficiently Modeling Long Sequences with Structured State Spaces".
     """
-    return torch.exp(-2j * torch.pi * (torch.arange(L) / L))
+    return torch.exp(-2j * torch.pi * (torch.arange(L, **kwargs) / L))
 
 
-def conv_kernel_DPLR(Lambda, P, Q, B, C, step, L):
+def conv_kernel_DPLR(Lambda, P, Q, B, C, step, Omega):
     """
     Get convolution kernel from DPLR model parameters.
     - Lambda, P, Q, B, C: Model parameters (Complex Tensors)
     - step: Step size
-    - L: Input length
+    - Omega: Roots of unity at which SSM generating function is evaluated.
+        - Must be generated from get_roots_of_unity(L) where L is the sequence length.
 
     This is almost the same as Algorithm 1 in "Efficiently Modeling Long Sequences with
     Structured State Spaces". However, the first step that transforms C is skipped. The
@@ -157,9 +159,6 @@ def conv_kernel_DPLR(Lambda, P, Q, B, C, step, L):
 
     The resulting convolution kernel is LxD where D is the signal dimensions.
     """
-    # Roots of unith at which SSM generating function is evaluated.
-    Omega = get_roots_of_unity(L)
-
     # Size of B: NxD
     # Size of C: DxN
     a0, a1, b0, b1 = [
@@ -181,7 +180,7 @@ def conv_kernel_DPLR(Lambda, P, Q, B, C, step, L):
     k11 = (a1 * b1 / cauchy_denominator).sum(dim=-1)
 
     evaluated = (2.0 / (1.0 + Omega)) * (k00 - k01 * (1.0 / (1.0 + k11)) * k10)
-    out = torch.fft.ifft(evaluated, L)
+    out = torch.fft.ifft(evaluated)
     # out is DxL, transpose to get LxD
     out = out.T
     return out.real
@@ -257,13 +256,17 @@ class S4Base(nn.Module):
         # Step size is a learnable parameter but stored as log.
         self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1))
 
-    def get_conv_kernel(self, L):
+        # The roots of unity is cached in order to compute the convolution kernel faster.
+        # Note that it's not a parameter.
+        self.Omega = torch.empty(0)
+
+    def get_conv_kernel(self, Omega):
         step = self.log_step.exp()
         Lambda = torch.view_as_complex(self.Lambda)
         P = torch.view_as_complex(self.P)
         B = torch.view_as_complex(self.B)
         C = torch.view_as_complex(self.C)
-        return conv_kernel_DPLR(Lambda, P, P, B, C, step, L)
+        return conv_kernel_DPLR(Lambda, P, P, B, C, step, Omega)
 
     def discretize(self, L):
         step = self.log_step.exp()
@@ -281,7 +284,11 @@ class S4Base(nn.Module):
         - u: Input torch.Tensor of size BxLxD or LxD
         """
         L = u.size(dim=-2)
-        K = self.get_conv_kernel(L)
+        if self.Omega.size(dim=0) != L:
+            device = next(self.parameters()).device
+            self.Omega = get_roots_of_unity(L, device=device)
+            # Potential bug: the model changed device but the sequence size didn't change.
+        K = self.get_conv_kernel(self.Omega)
         return convolve(u, K) + self.D * u
 
     def recurrent_forward(self, u: torch.Tensor):
@@ -316,8 +323,8 @@ class S4Base(nn.Module):
         """
         Ab, Bb, Cb = self.discretize(L)
         Ct = Cb.T
-        x = torch.zeros(Ab.size(dim=0), Bb.size(dim=-1))
-        x = x.to(Ab.dtype)
+        device = next(self.parameters()).device
+        x = torch.zeros(Ab.size(dim=0), Bb.size(dim=-1), device=device, dtype=Ab.dtype)
 
         def f(u):
             nonlocal x

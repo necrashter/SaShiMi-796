@@ -26,6 +26,7 @@ class TestS4Components(unittest.TestCase):
         Test whether conv_kernel_DPLR is equivalent to conv_kernel_naive.
         """
         L = 16
+        step = 1.0 / L
         Lambda, _, P, B = init_DPLR_HiPPO(1, 4)
 
         # Discretize HiPPO
@@ -38,7 +39,7 @@ class TestS4Components(unittest.TestCase):
 
         # Compare to the DPLR generating function approach.
         C = Cb @ (torch.eye(4) - torch.linalg.matrix_power(Ab, L)).conj()
-        b = conv_kernel_DPLR(Lambda, P, P, B, C, step=1.0 / L, L=L)
+        b = conv_kernel_DPLR(Lambda, P, P, B, C, step, get_roots_of_unity(L))
         self.assertTrue(torch.allclose(a.real, b.real, atol=1e-5, rtol=1e-5))
 
     def test_conv_and_recurrent(self):
@@ -75,7 +76,7 @@ class TestS4Components(unittest.TestCase):
         C = torch.randn(1, 4, dtype=torch.complex64)
 
         # Convolution kernel
-        K = conv_kernel_DPLR(Lambda, P, P, B, C, step, L)
+        K = conv_kernel_DPLR(Lambda, P, P, B, C, step, get_roots_of_unity(L))
 
         # Recurrent form
         Ab, Bb, Cb = discretize_DPLR(Lambda, P, P, B, C, step, L)
@@ -170,9 +171,9 @@ class TestS4Components(unittest.TestCase):
         C0, C1 = C[0:1, :], C[1:2, :]
 
         # Convolution kernel
-        K = conv_kernel_DPLR(Lambda, P, P, B, C, step, L)
-        K0 = conv_kernel_DPLR(Lambda, P, P, B0, C0, step, L)
-        K1 = conv_kernel_DPLR(Lambda, P, P, B1, C1, step, L)
+        K  = conv_kernel_DPLR(Lambda, P, P, B, C, step, get_roots_of_unity(L))
+        K0 = conv_kernel_DPLR(Lambda, P, P, B0, C0, step, get_roots_of_unity(L))
+        K1 = conv_kernel_DPLR(Lambda, P, P, B1, C1, step, get_roots_of_unity(L))
         self.assertTrue(torch.allclose(K0, K[:, 0:1], atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(K1, K[:, 1:2], atol=1e-5, rtol=1e-5))
 
