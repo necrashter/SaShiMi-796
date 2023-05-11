@@ -246,12 +246,14 @@ class S4Base(nn.Module):
         self.P = nn.parameter.Parameter(torch.view_as_real(P.resolve_conj()))
         self.B = nn.parameter.Parameter(torch.view_as_real(B.resolve_conj()))
 
-        C = torch.empty(1, state_dim, dtype=torch.complex64)
-        nn.init.xavier_normal_(C)
+        # Standard normal initialization works better than xavier_normal_ initialization
+        # on this parameter.
+        C = torch.randn(1, state_dim, dtype=torch.complex64)
+        # nn.init.xavier_normal_(C)
         self.C = nn.parameter.Parameter(torch.view_as_real(C))
 
-        # D is like a skip connection, hence initialize with 1's
-        self.D = nn.parameter.Parameter(torch.ones(1))
+        # How you Initialize this parameter doesn't affect much.
+        self.D = nn.parameter.Parameter(torch.randn(signal_dim))
 
         # Step size is a learnable parameter but stored as log.
         self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1))
