@@ -23,13 +23,13 @@ class Sequential(nn.Sequential):
     A sequential NN block that accounts for the S4 layers when generating samples.
     Subclass of `torch.nn.Sequential`.
     """
-    def get_recurrent_runner(self, L: int):
+    def get_recurrent_runner(self):
         """
         Discretize the model with given L and return a function that maps state and input to
         the new state and input.
         """
         layers = [
-            layer.get_recurrent_runner(L) if hasattr(layer, "get_recurrent_runner") else layer
+            layer.get_recurrent_runner() if hasattr(layer, "get_recurrent_runner") else layer
             for layer in self
         ]
 
@@ -47,7 +47,7 @@ class Sequential(nn.Sequential):
         - signal: Starting signal of shape LxD where L is the length, D is dimension
         """
         L = (samples + signal.size(dim=-2)) if signal is not None else samples
-        f = self.get_recurrent_runner(L)
+        f = self.get_recurrent_runner()
 
         # Process the given signal
         for s in signal:
@@ -71,13 +71,13 @@ class Residual(Sequential):
     """
     A sequential block with a residual connection from its beginning to the end.
     """
-    def get_recurrent_runner(self, L: int):
+    def get_recurrent_runner(self):
         """
         Discretize the model with given L and return a function that maps state and input to
         the new state and input.
         """
         layers = [
-            layer.get_recurrent_runner(L) if hasattr(layer, "get_recurrent_runner") else layer
+            layer.get_recurrent_runner() if hasattr(layer, "get_recurrent_runner") else layer
             for layer in self
         ]
 
@@ -93,11 +93,14 @@ class Residual(Sequential):
         return super().forward(x) + x
 
 
-def S4Block(signal_dim: int, state_dim: int, expansion_factor: int = 2):
+def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
     """
     Construct the full S4 block given in SaShiMi paper. Arguments:
     - signal_dim: Number of dimensions in the signal.
     - state_dim: Number of dimensions in inner state.
+    - sequence_length: The length of the sequence on which this model will operate.
+        - Can be changed later, but models trained on one sequence length perform poorly
+          on another sequence length.
     - expansion_factor: The factor by which the number of dimensions will be multiplied
                         between two linear layers in the second pass.
 
@@ -129,7 +132,7 @@ def S4Block(signal_dim: int, state_dim: int, expansion_factor: int = 2):
     return Sequential(
         Residual(
             nn.LayerNorm(signal_dim),
-            S4Base(signal_dim, state_dim),
+            S4Base(signal_dim, state_dim, sequence_length),
             nn.GELU(),
             nn.Linear(signal_dim, signal_dim),
         ),

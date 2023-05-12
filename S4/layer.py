@@ -231,11 +231,14 @@ class S4Base(nn.Module):
     """
     An S4 layer module. It represents an SSM in DPLR form.
     """
-    def __init__(self, signal_dim: int, state_dim: int):
+    def __init__(self, signal_dim: int, state_dim: int, sequence_length: int):
         """
         Initialize S4.
         - signal_dim: Number of dimensions in the signal.
         - state_dim: Number of dimensions in inner state.
+        - sequence_length: The length of the sequence on which this model will operate.
+            - Can be changed later, but models trained on one sequence length perform
+              poorly on another sequence length.
         """
         super().__init__()
         Lambda, _, P, B = init_DPLR_HiPPO(signal_dim, state_dim)
@@ -259,8 +262,21 @@ class S4Base(nn.Module):
         self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1))
 
         # The roots of unity is cached in order to compute the convolution kernel faster.
-        # Note that it's not a parameter.
-        self.Omega = torch.empty(0)
+        # Note that it's a buffer, not a parameter. It won't be trained.
+        self.register_buffer("Omega", get_roots_of_unity(sequence_length))
+
+    @property
+    def sequence_length(self):
+        """
+        The length of the sequence on which this model will operate.
+        Can be changed after construction, but models trained on one sequence length
+        perform poorly on another sequence length.
+        """
+        return self.Omega.size(dim=0)
+
+    @sequence_length.setter
+    def sequence_length(self, value):
+        self.Omega = get_roots_of_unity(value)
 
     def get_conv_kernel(self, Omega):
         step = self.log_step.exp()
@@ -285,11 +301,9 @@ class S4Base(nn.Module):
         For batch size B, input sequence length L, and input dimensions D, the argument is:
         - u: Input torch.Tensor of size BxLxD or LxD
         """
-        L = u.size(dim=-2)
-        if self.Omega.size(dim=0) != L:
-            device = next(self.parameters()).device
-            self.Omega = get_roots_of_unity(L, device=device)
-            # Potential bug: the model changed device but the sequence size didn't change.
+        if u.size(dim=-2) != self.sequence_length:
+            raise ValueError(f"This model has a sequence_length of {self.sequence_length}," +
+                             f" but the length of the input is {u.size(dim=-2)}")
         K = self.get_conv_kernel(self.Omega)
         return convolve(u, K) + self.D * u
 
@@ -303,6 +317,9 @@ class S4Base(nn.Module):
         The input cannot be a batch for recurrent_forward.
         """
         L = u.size(dim=-2)
+        if L != self.sequence_length:
+            raise ValueError(f"This model has a sequence_length of {self.sequence_length}," +
+                             f" but the length of the input is {L}")
         Ab, Bb, Cb = self.discretize(L)
         # States are ignored
         _, out = run_recurrent_SSM(Ab, Bb, Cb, u)
@@ -318,12 +335,12 @@ class S4Base(nn.Module):
         """
         return self.convolutional_forward(u)
 
-    def get_recurrent_runner(self, L: int):
+    def get_recurrent_runner(self):
         """
-        Discretize the model with given L and return a stateful function that maps the input
+        Discretize the model and return a stateful function that maps the input
         signal to output signal one sample at a time.
         """
-        Ab, Bb, Cb = self.discretize(L)
+        Ab, Bb, Cb = self.discretize(self.sequence_length)
         Ct = Cb.T
         device = next(self.parameters()).device
         x = torch.zeros(Ab.size(dim=0), Bb.size(dim=-1), device=device, dtype=Ab.dtype)

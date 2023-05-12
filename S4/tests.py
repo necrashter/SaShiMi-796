@@ -96,7 +96,8 @@ class TestS4Components(unittest.TestCase):
         In S4 module, convolutional_forward and recurrent_forward must be equivalent.
         """
         L = 16
-        s4 = S4Base(1, 4)
+        s4 = S4Base(1, 4, L)
+        self.assertEqual(s4.sequence_length, L)
 
         # Generate random input
         u = torch.randn(L, 1)
@@ -110,7 +111,9 @@ class TestS4Components(unittest.TestCase):
         Processing N inputs one by one must be equivalent to processing them in a batch.
         """
         L = 16
-        s4 = S4Base(1, 4)
+        s4 = S4Base(1, 4, L)
+        self.assertEqual(s4.sequence_length, L)
+
         # Generate random input
         us = [torch.randn(1, L, 1) for _ in range(4)]
         combined_out = torch.cat([s4(u) for u in us], dim=0)
@@ -214,17 +217,17 @@ class TestS4Components(unittest.TestCase):
 
     def test_S4Block_dimensions(self):
         L = 16
-        s4block = S4Block(2, 4)
+        s4block = S4Block(2, 4, L)
         x = torch.randn(L, 2)
         y = s4block(x)
         self.assertEqual(x.size(), y.size())
 
     def test_recurrent_runner(self):
         L = 16
-        s4 = S4Block(2, 4)
+        s4 = S4Block(2, 4, L)
         u = torch.randn(L, 2)
         o = s4(u)
-        f = s4.get_recurrent_runner(L)
+        f = s4.get_recurrent_runner()
         o2 = torch.stack([f(i) for i in u])
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
 
@@ -233,10 +236,10 @@ class TestS4Components(unittest.TestCase):
         Tests priming and sample generation.
         """
         L = 16
-        s4 = S4Block(2, 4)
+        s4 = S4Block(2, 4, L)
 
         # Generate random sample autoregressively
-        f = s4.get_recurrent_runner(L)
+        f = s4.get_recurrent_runner()
         current = torch.zeros(2)
         generated = []
         for _ in range(L):
@@ -245,7 +248,7 @@ class TestS4Components(unittest.TestCase):
 
         # Start again
         # Prime the model with a part of the generated sample
-        f = s4.get_recurrent_runner(L)
+        f = s4.get_recurrent_runner()
         for i in [torch.zeros(2)] + generated[:7]:
             current = f(i)
 
@@ -259,3 +262,23 @@ class TestS4Components(unittest.TestCase):
         gen1 = torch.stack(generated[8:])
         gen2 = torch.stack(gen2)
         self.assertTrue(torch.allclose(gen1, gen2, atol=1e-6, rtol=1e-6))
+
+    def test_S4Base_sequence_length(self):
+        """
+        Test the sequence length and Omega property of S4Base.
+        """
+        L = 16
+        s4 = S4Base(1, 4, L)
+        self.assertEqual(s4.sequence_length, L)
+        self.assertTrue(torch.allclose(s4.Omega, get_roots_of_unity(L)))
+
+        # Changing sequence_length shall change Omega
+        L = 8
+        s4.sequence_length = L
+        self.assertEqual(s4.sequence_length, L)
+        self.assertTrue(torch.allclose(s4.Omega, get_roots_of_unity(L)))
+
+        u = torch.randn(16, 1)
+        # Feeding an input with incorrect sequence_length shall trigger ValueError
+        with self.assertRaises(ValueError):
+            s4(u)
