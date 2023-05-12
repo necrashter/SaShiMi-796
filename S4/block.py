@@ -71,6 +71,24 @@ class Residual(Sequential):
     """
     A sequential block with a residual connection from its beginning to the end.
     """
+    def get_recurrent_runner(self, L: int):
+        """
+        Discretize the model with given L and return a function that maps state and input to
+        the new state and input.
+        """
+        layers = [
+            layer.get_recurrent_runner(L) if hasattr(layer, "get_recurrent_runner") else layer
+            for layer in self
+        ]
+
+        def f(x):
+            y = x
+            for layer in layers:
+                y = layer(y)
+            return y + x
+
+        return f
+
     def forward(self, x):
         return super().forward(x) + x
 
