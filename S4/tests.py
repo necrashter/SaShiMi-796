@@ -4,6 +4,17 @@ from . block import *
 
 
 class TestS4Components(unittest.TestCase):
+    def test_HiPPO_naive_DPLR(self):
+        A, _ = init_HiPPO(1, 4)
+        A = A.to(torch.complex64)
+
+        Lambda, V, P, _ = init_DPLR_HiPPO(1, 4)
+        Ar = V @ (torch.diag(Lambda) - P.unsqueeze(1) @ P.unsqueeze(1).conj().T) @ V.conj().T
+        self.assertTrue(torch.allclose(Ar, -A, atol=1e-5, rtol=1e-5))
+
+        # V must be unitary
+        self.assertTrue(torch.allclose(torch.linalg.inv(V), V.conj().T, atol=1e-5, rtol=1e-5))
+
     def test_HiPPO_NPLR_DPLR(self):
         """
         Check whether the NPLR and DPLR representations of HiPPO are equivalent.
@@ -35,6 +46,7 @@ class TestS4Components(unittest.TestCase):
         Ab, Bb, Cb = discretize_SSM(A, B, C, 1.0 / L)
 
         # Naive convolution
+        # For Cb.conj(), see Appendix C.1 Remark C.1 equation 8.
         a = conv_kernel_naive(Ab, Bb, Cb.conj(), L)
 
         # Compare to the DPLR generating function approach.
@@ -96,7 +108,8 @@ class TestS4Components(unittest.TestCase):
         In S4 module, convolutional_forward and recurrent_forward must be equivalent.
         """
         L = 16
-        s4 = S4Base(1, 4)
+        s4 = S4Base(1, 4, L)
+        self.assertEqual(s4.sequence_length, L)
 
         # Generate random input
         u = torch.randn(L, 1)
@@ -110,7 +123,9 @@ class TestS4Components(unittest.TestCase):
         Processing N inputs one by one must be equivalent to processing them in a batch.
         """
         L = 16
-        s4 = S4Base(1, 4)
+        s4 = S4Base(1, 4, L)
+        self.assertEqual(s4.sequence_length, L)
+
         # Generate random input
         us = [torch.randn(1, L, 1) for _ in range(4)]
         combined_out = torch.cat([s4(u) for u in us], dim=0)
@@ -214,16 +229,68 @@ class TestS4Components(unittest.TestCase):
 
     def test_S4Block_dimensions(self):
         L = 16
-        s4block = S4Block(2, 4)
+        s4block = S4Block(2, 4, L)
         x = torch.randn(L, 2)
         y = s4block(x)
         self.assertEqual(x.size(), y.size())
 
     def test_recurrent_runner(self):
         L = 16
-        s4 = S4Block(2, 4)
+        s4 = S4Block(2, 4, L)
         u = torch.randn(L, 2)
         o = s4(u)
-        f = s4.get_recurrent_runner(L)
+        f = s4.get_recurrent_runner()
         o2 = torch.stack([f(i) for i in u])
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
+
+    def test_priming(self):
+        """
+        Tests priming and sample generation.
+        """
+        L = 16
+        s4 = S4Block(2, 4, L)
+
+        # Generate random sample autoregressively
+        f = s4.get_recurrent_runner()
+        current = torch.zeros(2)
+        generated = []
+        for _ in range(L):
+            current = f(current)
+            generated.append(current)
+
+        # Start again
+        # Prime the model with a part of the generated sample
+        f = s4.get_recurrent_runner()
+        for i in [torch.zeros(2)] + generated[:7]:
+            current = f(i)
+
+        # Generate the rest of the sample
+        gen2 = []
+        for _ in range(8):
+            current = f(current)
+            gen2.append(current)
+
+        # Original generation and primed generation must yield the same result
+        gen1 = torch.stack(generated[8:])
+        gen2 = torch.stack(gen2)
+        self.assertTrue(torch.allclose(gen1, gen2, atol=1e-6, rtol=1e-6))
+
+    def test_S4Base_sequence_length(self):
+        """
+        Test the sequence length and Omega property of S4Base.
+        """
+        L = 16
+        s4 = S4Base(1, 4, L)
+        self.assertEqual(s4.sequence_length, L)
+        self.assertTrue(torch.allclose(s4.Omega, get_roots_of_unity(L)))
+
+        # Changing sequence_length shall change Omega
+        L = 8
+        s4.sequence_length = L
+        self.assertEqual(s4.sequence_length, L)
+        self.assertTrue(torch.allclose(s4.Omega, get_roots_of_unity(L)))
+
+        u = torch.randn(16, 1)
+        # Feeding an input with incorrect sequence_length shall trigger ValueError
+        with self.assertRaises(ValueError):
+            s4(u)
