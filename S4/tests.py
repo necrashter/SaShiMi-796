@@ -4,6 +4,17 @@ from . block import *
 
 
 class TestS4Components(unittest.TestCase):
+    def test_HiPPO_naive_DPLR(self):
+        A, _ = init_HiPPO(1, 4)
+        A = A.to(torch.complex64)
+
+        Lambda, V, P, _ = init_DPLR_HiPPO(1, 4)
+        Ar = V @ (torch.diag(Lambda) - P.unsqueeze(1) @ P.unsqueeze(1).conj().T) @ V.conj().T
+        self.assertTrue(torch.allclose(Ar, -A, atol=1e-5, rtol=1e-5))
+
+        # V must be unitary
+        self.assertTrue(torch.allclose(torch.linalg.inv(V), V.conj().T, atol=1e-5, rtol=1e-5))
+
     def test_HiPPO_NPLR_DPLR(self):
         """
         Check whether the NPLR and DPLR representations of HiPPO are equivalent.
@@ -35,6 +46,7 @@ class TestS4Components(unittest.TestCase):
         Ab, Bb, Cb = discretize_SSM(A, B, C, 1.0 / L)
 
         # Naive convolution
+        # For Cb.conj(), see Appendix C.1 Remark C.1 equation 8.
         a = conv_kernel_naive(Ab, Bb, Cb.conj(), L)
 
         # Compare to the DPLR generating function approach.

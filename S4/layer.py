@@ -8,9 +8,13 @@ from torch import nn
 
 def init_HiPPO(signal_dim: int, state_dim: int):
     """
-    Initialize HiPPO (High-Order Polynomial Projection Operator) matrix.
+    Initialize the A and B tensors of HiPPO (High-Order Polynomial Projection Operator).
 
     Equation 2 in "Efficiently Modeling Long Sequences with Structured State Spaces".
+    More specifically, Theorem 2 in "HiPPO: Recurrent Memory with Optimal Polynomial
+    Projections".
+
+    This HiPPO variant is called HiPPO-LegS. It assigns uniform weight to all history.
     """
     A = torch.zeros(state_dim, state_dim)
     for k in range(state_dim):
@@ -28,10 +32,23 @@ def init_HiPPO(signal_dim: int, state_dim: int):
 def init_NPLR_HiPPO(signal_dim: int, state_dim: int):
     """
     Initialize HiPPO with Normal Plus Low-Rank (NPLR) structure.
+    Returns A, P, B where A and B are from init_HiPPO (A is negated).
+    P is a 1D tensor such that the equation
+        A = (S + 0.5 I) - P @ P.conj().T
+    holds for a skew-symmetric matrix S, i.e., S.T = -S holds.
+    This also means that S can be diagonalized.
+    S = V @ Lambda @ V.conj().T for some diagonal matrix Lambda.
+    See also: init_DPLR_HiPPO.
+
+    See HiPPO-LegS part of Appendix C.1 in "Efficiently Modeling Long Sequences with
+    Structured State Spaces".
     """
     A, B = init_HiPPO(signal_dim, state_dim)
+    # A matrix from HiPPO-LegS is negated in Appendix C.1.
     A = A * -1.0
-    # Rank 1 term to make HiPPO Normal.
+    # Note that in Appendix C.1, they add 0.5 * sqrt(2n+1) * sqrt(2k+1) to each element
+    # in matrix. The matrix form of these added terms corresponds to the outer product of 
+    # sqrt(0.5) * sqrt(2n+1) vector. Simplifying this, we get sqrt(n + 0.5).
     P = torch.sqrt(torch.arange(state_dim) + 0.5)
     return A, P, B
 
@@ -39,25 +56,50 @@ def init_NPLR_HiPPO(signal_dim: int, state_dim: int):
 def init_DPLR_HiPPO(signal_dim: int, state_dim: int):
     """
     Initialize HiPPO with Diagonal Plus Low-Rank (DPLR) structure.
+    Returns Lambda, V, P, B tensors where
+    - Lambda, V, P are diagonalized version of A. They are complex tensors.
+    - B is B from init_HiPPO but left-multiplied with the inverse of V. More on this
+      below.
+
+    In particular, the following equation holds:
+        A = V @ (Lambda - P @ P.conj().T) @ V.conj().T
+    By Lemma 3.1 in "Efficiently Modeling Long Sequences with Structured State Spaces", 
+    we can directly use the inner part Lambda - P @ P.conj().T as our A matrix. To do
+    this, we also need to set our B vector to V^{-1} B where B is the original B from
+    init_HiPPO.
+
     This is done by diagonalizing the NPLR representation.
     """
     A, P, B = init_NPLR_HiPPO(signal_dim, state_dim)
 
-    S = A + P.unsqueeze(1) * P.unsqueeze(0)
+    # Note that the following equality holds: A = (S + 0.5 I) - P @ P.T
+    # Recover (S + 0.5 I) from that equation.
+    SI = A + P.unsqueeze(1) * P.unsqueeze(0)
 
-    # Check skew symmetry
-    S_diag = torch.diagonal(S)
-    Lambda_real = torch.mean(S_diag) * torch.ones_like(S_diag)
-    # This can fail due to floating point inaccuracy if the dimensions are too large.
-    # assert torch.allclose(Lambda_real, S_diag, atol=1e-5)
+    # Recover S from (S + 0.5 I)
+    diag = torch.diagonal(SI)
+    S = SI - torch.diag(diag)
+    # All values in diag must be 0.5, but it doesn't always happen due to floating
+    # point inaccuracy.
 
-    # Diagonalize S to V Lambda V* form.
-    Lambda_imag, V = torch.linalg.eigh(S * -1j)
-    Lambda = Lambda_real + Lambda_imag * 1j
+    # We can now diagonalize S.
+    # Since S is a skew-symmetric matrix, j*S is a Hermitian matrix where j is the
+    # imaginary unit. We can get the eigenvalues of -j*S and multiply them with j
+    # to get the eigenvalues of S (since j^2 = -1).
+    eigenvalues, V = torch.linalg.eigh(S * -1j)
+    Lambda = diag + eigenvalues * 1j
 
+    # At this point the following equation holds:
+    #   A = V @ (Lambda - (V.conj().T @ P) @ (V.conj().T @ P.conj().T)) @ V.T
+    # Simply left-multiply P with V.conj().T and use that as P.
     Vc = V.conj().T
     P = Vc @ P.to(torch.complex64)
+
+    # Now we will use Lambda - P @ P.conj().T as A.
+    # Remember from Lemma 3.1 that we also need to set the new B to V^{-1} B.
+    # Since B is unitary, we can use conjugate transpose as V^{-1}.
     B = Vc @ B.to(torch.complex64)
+
     return Lambda, V, P, B
 
 
@@ -248,6 +290,8 @@ class S4Base(nn.Module):
         self.Lambda = nn.parameter.Parameter(torch.view_as_real(Lambda.resolve_conj()))
         self.P = nn.parameter.Parameter(torch.view_as_real(P.resolve_conj()))
         self.B = nn.parameter.Parameter(torch.view_as_real(B.resolve_conj()))
+        # We don't have a separate Q parameter. We simply use P as Q.
+        # See section 4.1 in "It’s Raw! Audio Generation with State-Space Models".
 
         # Standard normal initialization works better than xavier_normal_ initialization
         # on this parameter.
