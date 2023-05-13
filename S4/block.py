@@ -40,32 +40,6 @@ class Sequential(nn.Sequential):
 
         return f
 
-    def autoregressive_sample(self, samples: int, signal):
-        """
-        Sample in autoregressive fashion: feed the output of the previous iteration as input.
-        - samples: Number of new samples
-        - signal: Starting signal of shape LxD where L is the length, D is dimension
-        """
-        L = (samples + signal.size(dim=-2)) if signal is not None else samples
-        f = self.get_recurrent_runner()
-
-        # Process the given signal
-        for s in signal:
-            u = f(s)
-
-        # Generate the new part
-        Y = []
-        for _ in range(samples):
-            y = f(u)
-            Y.append(y)
-            u = y
-
-        generated = torch.stack(Y).real
-        if signal is not None:
-            return torch.cat([signal, generated], dim=0)
-        else:
-            return generated
-
 
 class Residual(Sequential):
     """
