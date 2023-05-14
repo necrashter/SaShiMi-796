@@ -74,7 +74,7 @@ class YoutubeMixTransform:
         y = audio[1:1+self.sequence_length]
         # Make y labels from 0 to 255
         y = torch.clamp((y / 2.0) + 0.5, 0.0, 1.0)
-        y = torch.mul(y, 255.0).to(torch.int32)
+        y = torch.mul(y, 255.0).to(torch.int64)
         if self.device is not None:
             x = x.to(self.device)
             y = y.to(self.device)

@@ -1,9 +1,7 @@
 """
 Contains the implementation of S4 block module.
 """
-import torch
 from torch import nn
-from . layer import S4Base
 
 
 class Lambda(nn.Module):
@@ -65,55 +63,3 @@ class Residual(Sequential):
 
     def forward(self, x):
         return super().forward(x) + x
-
-
-def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
-    """
-    Construct the full S4 block given in SaShiMi paper. Arguments:
-    - signal_dim: Number of dimensions in the signal.
-    - state_dim: Number of dimensions in inner state.
-    - sequence_length: The length of the sequence on which this model will operate.
-        - Can be changed later, but models trained on one sequence length perform poorly
-          on another sequence length.
-    - expansion_factor: The factor by which the number of dimensions will be multiplied
-                        between two linear layers in the second pass.
-
-    High-level Architecture
-    -----------------------
-
-    The architecture is as described in Appendix A.2 of "It’s Raw! Audio Generation with
-    State-Space Models" paper.
-
-    First pass:
-    1. Input
-    2. LayerNorm
-    3. S4 Layer
-    4. GELU
-    5. Linear
-    6. Residual connection from 1
-
-    Second pass:
-    1. Output of the first pass
-    2. LayerNorm
-    3. Linear
-    4. GELU
-    5. Linear
-    6. Residual connection from 1
-
-    All linear layers are position-wise, i.e., they operate on the signal dimensions, not
-    the time dimension.
-    """
-    return Sequential(
-        Residual(
-            nn.LayerNorm(signal_dim),
-            S4Base(signal_dim, state_dim, sequence_length),
-            nn.GELU(),
-            nn.Linear(signal_dim, signal_dim),
-        ),
-        Residual(
-            nn.LayerNorm(signal_dim),
-            nn.Linear(signal_dim, signal_dim * expansion_factor),
-            nn.GELU(),
-            nn.Linear(signal_dim * expansion_factor, signal_dim),
-        ),
-    )
