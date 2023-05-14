@@ -46,3 +46,36 @@ class WavDataset(Dataset):
             audio = self.transform(audio)
 
         return audio
+
+
+class YoutubeMixTransform:
+    """
+    Transform class for autoregressive generation on Youtube Mix Dataset.
+    """
+    def __init__(self, device=None, sequence_length: int = 958400):
+        
+        """
+        - device: Samples will be moved to this device after preprocessing.
+        - sequence_length: Sample count. 958400 by default because some WAV files
+          are a bit shorter than 1 minute.
+        """
+        self.device = device
+        self.sequence_length = sequence_length
+
+    def __call__(self, audio):
+        """
+        Returns:
+        - x: Samples 0 to N, each sample is a float between -1 and +1.
+        - y: Samples 1 to N+1, each sample is an integer between 0 to 255.
+        """
+        # 16 bit signed into float -1 to +1
+        audio = (torch.from_numpy(audio) / 2**15)
+        x = audio[:self.sequence_length]
+        y = audio[1:1+self.sequence_length]
+        # Make y labels from 0 to 255
+        y = torch.clamp((y / 2.0) + 0.5, 0.0, 1.0)
+        y = torch.mul(y, 255.0).to(torch.int32)
+        if self.device is not None:
+            x = x.to(self.device)
+            y = y.to(self.device)
+        return x, y
