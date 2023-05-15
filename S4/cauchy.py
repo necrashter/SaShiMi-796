@@ -1,6 +1,6 @@
 """
 Implementations of Cauchy kernel computation.
-- Efficient PyKeOps implementation is used when it's installed and available.
+- Memory efficient PyKeOps implementation is used when PyKeOps is installed.
 - Otherwise, the naive PyTorch implementation is used as a fallback.
 """
 import torch
@@ -37,10 +37,13 @@ try:
                               Lambda: torch.Tensor,
                               ):
         """
-        Compute the Cauchy kernel efficiently using PyKeOps.
+        Compute the Cauchy kernel using PyKeOps for better memory efficiency.
         """
         # For PyKeOps, we need two tensors of shapes (..., M, 1, D) and (..., 1, N, D).
-        denominator = g.view(1, 1, -1) - Lambda.view(1, -1, 1)
+        # D = 1 in our case.
+        # Let's use M for sequence_length and N for state_dim.
+        g = LazyTensor(g.view(-1, 1, 1))
+        Lambda = LazyTensor(Lambda.view(1, -1, 1))
         # NOTE: Running contiguous() can slow things down. There might be a more efficient
         # way to reshape these into the form that PyKeOps wants.
         a0 = a0.view(a0.size(dim=0), 1, -1, 1).contiguous()
@@ -49,11 +52,11 @@ try:
         b1 = b1.view(b1.size(dim=0), 1, -1, 1).contiguous()
         # a0 to b1:    (SIGNAL,  1, STATE, 1)
         # denominator:    (1, STATE, SAMPLES)
-        denominator = LazyTensor(denominator)
-        k00 = (LazyTensor(a0 * b0) / denominator).sum_reduction(axis=2).squeeze(1)
-        k01 = (LazyTensor(a0 * b1) / denominator).sum_reduction(axis=2).squeeze(1)
-        k10 = (LazyTensor(a1 * b0) / denominator).sum_reduction(axis=2).squeeze(1)
-        k11 = (LazyTensor(a1 * b1) / denominator).sum_reduction(axis=2).squeeze(1)
+        denominator = g - Lambda
+        k00 = (LazyTensor(a0 * b0) / denominator).sum_reduction(axis=2).squeeze(-1)
+        k01 = (LazyTensor(a0 * b1) / denominator).sum_reduction(axis=2).squeeze(-1)
+        k10 = (LazyTensor(a1 * b0) / denominator).sum_reduction(axis=2).squeeze(-1)
+        k11 = (LazyTensor(a1 * b1) / denominator).sum_reduction(axis=2).squeeze(-1)
         return k00, k01, k10, k11
 
     cauchy_kernel = pykeops_cauchy_kernel
