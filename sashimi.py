@@ -4,6 +4,41 @@ from S4 import *
 
 
 def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
+    """
+    Construct the full S4 block given in SaShiMi paper. Arguments:
+    - signal_dim: Number of dimensions in the signal.
+    - state_dim: Number of dimensions in inner state.
+    - sequence_length: The length of the sequence on which this model will operate.
+        - Can be changed later, but models trained on one sequence length perform poorly
+          on another sequence length.
+    - expansion_factor: The factor by which the number of dimensions will be multiplied
+                        between two linear layers in the second pass.
+
+    High-level Architecture
+    -----------------------
+
+    The architecture is as described in Appendix A.2 of "It’s Raw! Audio Generation with
+    State-Space Models" paper.
+
+    First pass:
+    1. Input
+    2. LayerNorm
+    3. S4 Layer
+    4. GELU
+    5. Linear
+    6. Residual connection from 1
+
+    Second pass:
+    1. Output of the first pass
+    2. LayerNorm
+    3. Linear
+    4. GELU
+    5. Linear
+    6. Residual connection from 1
+
+    All linear layers are position-wise, i.e., they operate on the signal dimensions, not
+    the time dimension.
+    """
     return Sequential(
         Residual(
             nn.LayerNorm(signal_dim),
@@ -21,7 +56,21 @@ def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_fac
 
 
 class DownPool(nn.Module):
+    """
+    Let p be the pooling factor and q the expansion factor.
+    The down-pooling operation is:
+
+           reshape                 linear
+    (T,H) ---------> (T/p, H * p) --------> (T/p, H * q)
+
+    Preserves the dimensions when combined with an UpPool layer with same settings.
+    """
     def __init__(self, signal_dim: int, pooling_factor: int = 4, expansion_factor: int = 2):
+        """
+        - signal_dim: Input signal dimensions.
+        - pooling_factor: Time is divided and hidden dimension is multiplied by this.
+        - expansion_factor: Ratio between the hidden dimension of output and input.
+        """
         super().__init__()
         self.pooling_factor = pooling_factor
         self.linear = nn.Linear(
@@ -37,7 +86,21 @@ class DownPool(nn.Module):
 
 
 class UpPool(nn.Module):
+    """
+    Let p be the pooling factor and q the expansion factor.
+    The up-pooling operation is the opposite of the down-pooling operation:
+
+                  linear                 reshape
+    (T/p, H * q) --------> (T/p, H * p) ---------> (T,H)
+
+    Preserves the dimensions when combined with a DownPool layer with same settings.
+    """
     def __init__(self, signal_dim: int, pooling_factor: int = 4, expansion_factor: int = 2):
+        """
+        - signal_dim: Output signal dimensions.
+        - pooling_factor: Time is multiplied and hidden dimension is divided by this.
+        - expansion_factor: Ratio between the hidden dimension of input and output.
+        """
         super().__init__()
         self.pooling_factor = pooling_factor
         self.linear = nn.Linear(
@@ -60,6 +123,13 @@ class UpPool(nn.Module):
 
 
 class CausalUpPool(UpPool):
+    """
+    Same as up-pooling, but shifts the input to the right and pads with zero in order to
+    preserve causality.
+
+    Note that regular up-pool breaks causality because the model can see the samples in
+    the future if they are in the same block.
+    """
     def forward(self, x):
         # Use shifting to preserve causality
         pad = torch.zeros(x.size(dim=0), 1, x.size(dim=2), device=x.device)
@@ -72,6 +142,16 @@ class CausalPooledResidual(nn.Module):
     """
     A sequential block wrapped between DownPool and UpPool layers with a residual connection
     from its beginning to the end.
+
+    Equivalent to this for convolution:
+
+        Residual(
+            DownPool(hidden_dim),
+            *sequential_blocks,
+            UpPool(hidden_dim),
+        )
+
+    But is capable of running recurrently unlike the block above.
     """
     def __init__(self,
                  layers,
@@ -79,6 +159,10 @@ class CausalPooledResidual(nn.Module):
                  pooling_factor: int = 4,
                  expansion_factor: int = 2,
                 ):
+        """
+        - layers: List of layers in sequential block.
+        - signal_dim, pooling_factor, expansion_factor: Parameters for pooling layers.
+        """
         super().__init__()
         self.sequential = Sequential(*layers)
         self.down_pool = DownPool(signal_dim, pooling_factor, expansion_factor)
@@ -133,6 +217,15 @@ def SaShiMi(input_dim: int,
             sequence_length: int,
             block_count: int,
            ):
+    """
+    Construct the SaShiMi architecture given in Figure 1 of "It’s Raw! Audio Generation with
+    State-Space Models" paper.
+    - input_dim: Input signal dimension.
+    - hidden_dim: Signal dimension in the S4 blocks.
+    - output_dim: Output signal dimension.
+    - state_dim, sequence_length: Parameters for S4 blocks.
+    - block_count: Number of S4 blocks in each series of S4 Blocks.
+    """
     return Sequential(
         nn.Linear(input_dim, hidden_dim),
         CausalPooledResidual(
