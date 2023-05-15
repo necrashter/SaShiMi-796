@@ -1,6 +1,7 @@
 import unittest
 from . layer import *
 from . block import *
+from . cauchy import *
 
 
 class TestS4Components(unittest.TestCase):
@@ -246,3 +247,45 @@ class TestS4Components(unittest.TestCase):
         # Feeding an input with incorrect sequence_length shall trigger ValueError
         with self.assertRaises(ValueError):
             s4(u)
+
+    def test_cauchy_naive_pykeops(self):
+        """
+        Test the equivalence of naive Cauchy kernel and PyKeOps Cauchy kernel.
+        """
+        try:
+            pykeops_cauchy_kernel  # type: ignore
+        except NameError:
+            self.skipTest("PyKeOps is not installed.")
+
+        L = 16
+        step = 1.0 / L
+        Lambda, _, P, B = init_DPLR_HiPPO(1, 4)
+        C = torch.randn(1, 4, dtype=torch.complex64)
+
+        Omega = get_roots_of_unity(L)
+        a0, a1, b0, b1 = [
+            i.unsqueeze(1) # DxN to Dx1xN, 1 is for sequence length (broadcasted)
+            for i in [
+                C.conj(), P.conj().unsqueeze(0),
+                B.T, P.unsqueeze(0),
+            ]
+        ]
+
+        g = (2.0 / step) * ((1.0 - Omega) / (1.0 + Omega))
+
+        # You can run this test on GPU if you want.
+        if torch.cuda.is_available():
+            device = torch.device('cuda')
+            a0 = a0.to(device)
+            a1 = a1.to(device)
+            b0 = b0.to(device)
+            b1 = b1.to(device)
+            g = g.to(device)
+            Lambda = Lambda.to(device)
+
+        naive_ks = naive_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+        pykeops_ks = pykeops_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+
+        for a, b in zip(naive_ks, pykeops_ks):
+            self.assertEqual(type(a), type(b))
+            self.assertTrue(torch.allclose(a, b, atol=1e-6, rtol=1e-6))
