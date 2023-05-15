@@ -84,6 +84,10 @@ class DownPool(nn.Module):
         x = x.reshape(-1, T // self.pooling_factor, H * self.pooling_factor)
         return self.linear(x)
 
+    def get_recurrent_runner(self):
+        raise TypeError("DownPool cannot be used in recurrent mode by itself. " +
+                        "See CausalPooledResidual.")
+
 
 class UpPool(nn.Module):
     """
@@ -120,6 +124,10 @@ class UpPool(nn.Module):
 
     def forward(self, x):
         return self.no_shift(x)
+
+    def get_recurrent_runner(self):
+        raise TypeError("UpPool cannot be used in recurrent mode by itself. " +
+                        "See CausalPooledResidual.")
 
 
 class CausalUpPool(UpPool):

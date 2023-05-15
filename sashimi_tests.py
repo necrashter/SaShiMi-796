@@ -16,6 +16,20 @@ class TestS4Components(unittest.TestCase):
         z = CausalUpPool(2)(y)
         self.assertEqual(list(z.size()), [1, 64, 2])
 
+    def test_pooling_recurrence_support(self):
+        """
+        Pooling layers don't support recurrent mode by themselves.
+        """
+        with self.assertRaises(TypeError):
+            DownPool(2).get_recurrent_runner()
+        with self.assertRaises(TypeError):
+            UpPool(2).get_recurrent_runner()
+        with self.assertRaises(TypeError):
+            CausalUpPool(2).get_recurrent_runner()
+
+        # Only this supports recurrent mode.
+        CausalPooledResidual([torch.nn.Identity()], 2).get_recurrent_runner()
+
     def test_causal_pooled_residual_padding(self):
         """
         Due to shifting in causal pooling, feeding different inputs should yield the same result
