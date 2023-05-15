@@ -4,6 +4,31 @@ from sashimi import *
 
 
 class TestS4Components(unittest.TestCase):
+    def test_causal_pooled_residual_padding(self):
+        """
+        Due to shifting in causal pooling, feeding different inputs should yield the same result
+        in the first block.
+        """
+        L = 4
+        model = CausalPooledResidual([torch.nn.Identity()], 2)
+        u = torch.randn(L, 2)
+        o1 = model(u) - u
+        u = torch.randn(L, 2)
+        o2 = model(u) - u
+        self.assertTrue(torch.allclose(o1, o2, atol=1e-6, rtol=1e-6))
+
+    def test_causal_pooled_residual_conv_recurrent(self):
+        """
+        Test whether running the CausalPooledResidual with convolution is equivalent to recurrence.
+        """
+        L = 8
+        model = CausalPooledResidual([torch.nn.Identity()], 2)
+        u = torch.randn(L, 2)
+        o = model(u)
+        f = model.get_recurrent_runner()
+        o2 = torch.stack([f(i) for i in u])
+        self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
+
     def test_sashimi_conv_recurrent(self):
         """
         Test whether running the SaShiMi model with convolution is equivalent to recurrence.
@@ -17,7 +42,7 @@ class TestS4Components(unittest.TestCase):
             sequence_length=L,
             block_count=2,
         )
-        u = torch.randn(1, L, 2)
+        u = torch.randn(L, 2)
         o = model(u)
         f = model.get_recurrent_runner()
         o2 = torch.stack([f(i) for i in u])
