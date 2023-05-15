@@ -4,6 +4,18 @@ from sashimi import *
 
 
 class TestS4Components(unittest.TestCase):
+    def test_pooling_dimensions(self):
+        """
+        Check the dimensions after down-pooling and up-pooling.
+        """
+        x = torch.randn(1, 64, 2)
+        y = DownPool(2)(x)
+        self.assertEqual(list(y.size()), [1, 64 // 4, 2 * 2])
+        z = UpPool(2)(y)
+        self.assertEqual(list(z.size()), [1, 64, 2])
+        z = CausalUpPool(2)(y)
+        self.assertEqual(list(z.size()), [1, 64, 2])
+
     def test_causal_pooled_residual_padding(self):
         """
         Due to shifting in causal pooling, feeding different inputs should yield the same result
