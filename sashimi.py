@@ -45,14 +45,26 @@ class UpPool(nn.Module):
             signal_dim * pooling_factor,
         )
 
-    def forward(self, x):
-        # Use shifting
-        pad = torch.zeros(x.size(dim=0), 1, x.size(dim=2), device=x.device)
-        x = torch.cat([pad, x[:, 1:, :]], dim=1)
+    def no_shift(self, x):
+        """
+        Apply up-pooling without shifting.
+        Equivalent to calling the layer directly in UpPool.
+        """
         y = self.linear(x)
         T = y.size(dim=-2)
         H = y.size(dim=-1)
         return y.reshape(-1, T * self.pooling_factor, H // self.pooling_factor)
+
+    def forward(self, x):
+        return self.no_shift(x)
+
+
+class CausalUpPool(UpPool):
+    def forward(self, x):
+        # Use shifting to preserve causality
+        pad = torch.zeros(x.size(dim=0), 1, x.size(dim=2), device=x.device)
+        x = torch.cat([pad, x[:, 1:, :]], dim=1)
+        return self.no_shift(x)
 
 
 def SaShiMi(input_dim: int,
@@ -72,10 +84,10 @@ def SaShiMi(input_dim: int,
                     S4Block(4 * hidden_dim, state_dim, sequence_length // 16)
                     for _ in range(block_count)
                 ]),
-                UpPool(2 * hidden_dim),
+                CausalUpPool(2 * hidden_dim),
             ),
             *[S4Block(2 * hidden_dim, state_dim, sequence_length // 4) for _ in range(block_count)],
-            UpPool(hidden_dim),
+            CausalUpPool(hidden_dim),
         ),
         *[S4Block(hidden_dim, state_dim, sequence_length) for _ in range(block_count)],
         nn.Linear(hidden_dim, output_dim),
