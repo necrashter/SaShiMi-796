@@ -73,3 +73,51 @@ class TestS4Components(unittest.TestCase):
         f = model.get_recurrent_runner()
         o2 = torch.stack([f(i) for i in u])
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
+
+    def test_S4Block_dimensions(self):
+        L = 16
+        s4block = S4Block(2, 4, L)
+        x = torch.randn(L, 2)
+        y = s4block(x)
+        self.assertEqual(x.size(), y.size())
+
+    def test_recurrent_runner(self):
+        L = 16
+        s4 = S4Block(2, 4, L)
+        u = torch.randn(L, 2)
+        o = s4(u)
+        f = s4.get_recurrent_runner()
+        o2 = torch.stack([f(i) for i in u])
+        self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
+
+    def test_priming(self):
+        """
+        Tests priming and sample generation.
+        """
+        L = 16
+        s4 = S4Block(2, 4, L)
+
+        # Generate random sample autoregressively
+        f = s4.get_recurrent_runner()
+        current = torch.zeros(2)
+        generated = []
+        for _ in range(L):
+            current = f(current)
+            generated.append(current)
+
+        # Start again
+        # Prime the model with a part of the generated sample
+        f = s4.get_recurrent_runner()
+        for i in [torch.zeros(2)] + generated[:7]:
+            current = f(i)
+
+        # Generate the rest of the sample
+        gen2 = []
+        for _ in range(8):
+            current = f(current)
+            gen2.append(current)
+
+        # Original generation and primed generation must yield the same result
+        gen1 = torch.stack(generated[8:])
+        gen2 = torch.stack(gen2)
+        self.assertTrue(torch.allclose(gen1, gen2, atol=1e-6, rtol=1e-6))
