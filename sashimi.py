@@ -63,7 +63,8 @@ class CausalUpPool(UpPool):
     def forward(self, x):
         # Use shifting to preserve causality
         pad = torch.zeros(x.size(dim=0), 1, x.size(dim=2), device=x.device)
-        x = torch.cat([pad, x[:, 1:, :]], dim=1)
+        # Shift all elements to the right, discard last, pad the beginning with zero.
+        x = torch.cat([pad, x[:, :-1, :]], dim=1)
         return self.no_shift(x)
 
 
@@ -100,9 +101,9 @@ class CausalPooledResidual(nn.Module):
         first = self.up_pool.no_shift(first)
         # first shape: (1, self.pooling_factor, hidden)
         output_cache = [i for i in first.squeeze(0)]
+        # Instead of removing items from the beginning, we reverse the list and pop from
+        # the end. This is slightly faster.
         output_cache.reverse()
-        if len(output_cache) != self.pooling_factor:
-            __import__('pdb').set_trace()
 
         sequential = self.sequential.get_recurrent_runner()
 
@@ -119,9 +120,6 @@ class CausalPooledResidual(nn.Module):
                 y = self.up_pool.no_shift(sequential(y).unsqueeze(0))
                 output_cache = [i for i in y.squeeze(0)]
                 output_cache.reverse()
-
-            if list(u.size()) != list(output.size()):
-                __import__('pdb').set_trace()
 
             return output
 
