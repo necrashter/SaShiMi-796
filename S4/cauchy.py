@@ -68,30 +68,81 @@ except ModuleNotFoundError:
 
 if __name__ == "__main__":
     import time
+    import argparse
 
-    state_dim = 256
-    signal_dim = 256
-    sequence_length = 1024
+    parser = argparse.ArgumentParser(
+        prog="Cauchy Kernel Benchmark",
+        description="Benchmark naive vs PyKeOps implementations of Cauchy kernel computation.",
+        epilog="Text at the bottom of help",
+    )
+    parser.add_argument(
+        "-s", "--state-dim",
+        type=int,
+        default=256,
+        help="State dimensions",
+    )
+    parser.add_argument(
+        "-d", "--signal-dim",
+        type=int,
+        default=256,
+        help="Signal dimensions",
+    )
+    parser.add_argument(
+        "-l", "--length",
+        type=int,
+        default=4096,
+        help="Sequence length",
+    )
 
-    dtype = torch.complex64
-    device = torch.device("cuda")
+    def benchmark(state_dim: int,
+                  signal_dim: int,
+                  sequence_length: int,
+                 ):
+        dtype = torch.complex64
+        device = torch.device("cuda")
 
-    a0, a1, b0, b1 = [torch.randn(signal_dim, 1, state_dim, dtype=dtype, device=device) for _ in range(4)]
-    g = torch.randn(sequence_length, dtype=dtype, device=device)
-    Lambda = torch.randn(state_dim, dtype=dtype, device=device)
+        a0, a1, b0, b1 = [torch.randn(signal_dim, 1, state_dim, dtype=dtype, device=device) for _ in range(4)]
+        g = torch.randn(sequence_length, dtype=dtype, device=device)
+        Lambda = torch.randn(state_dim, dtype=dtype, device=device)
 
-    print("Benchmarking...")
+        naive_ks = None
+        pykeops_ks = None
+        print("State dimensions: ", state_dim)
+        print("Signal dimensions:", signal_dim)
+        print("Sequence length:  ", sequence_length)
+        print("Benchmarking...")
+        print()
 
-    start = time.time()
-    naive_ks = naive_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
-    end = time.time()
-    print("NAIVE:", end - start)
+        # For some reason running PyKeOps before naive (or without naive) improves the
+        # performance of PyKeOps. The performance of naive method is not affected by order.
+        try:
+            start = time.time()
+            pykeops_ks = pykeops_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+            end = time.time()
+            print("PYKEOPS:", end - start, "seconds")
+        except RuntimeError as e:
+            print("PYKEOPS method failed!")
+            print("Error:", e)
 
-    start = time.time()
-    pykeops_ks = pykeops_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
-    end = time.time()
-    print("PYKEOPS:", end - start)
+        try:
+            start = time.time()
+            naive_ks = naive_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+            end = time.time()
+            print("NAIVE:  ", end - start, "seconds")
+        except RuntimeError as e:
+            print()
+            print("NAIVE method failed!")
+            print("Error:", e)
 
-    for a, b in zip(naive_ks, pykeops_ks):
-        assert type(a) == type(b)
-        print("Max difference:", (a-b).abs().max().item())
+        print()
+        if naive_ks is not None and pykeops_ks is not None:
+            for a, b in zip(naive_ks, pykeops_ks):
+                assert type(a) == type(b)
+                print("Max difference:", (a-b).abs().max().item())
+
+    args = parser.parse_args()
+    benchmark(
+        args.state_dim,
+        args.signal_dim,
+        args.length,
+    )
