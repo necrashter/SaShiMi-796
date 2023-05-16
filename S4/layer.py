@@ -387,10 +387,7 @@ class S4Base(nn.Module):
 
         def f(u):
             nonlocal x
-            # x = Ab @ x + Bb * u
-            # Use the last input
-            # TODO: there might be a problem here
-            x = Ab @ x + Bb * u.view(-1, Bb.size(dim=-1))[-1]
+            x = Ab @ x + Bb * u
             y = torch.sum(Ct * x, dim=0).flatten()
             return y.real + self.D * u
 
