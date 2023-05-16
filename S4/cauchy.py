@@ -2,6 +2,9 @@
 Implementations of Cauchy kernel computation.
 - Memory efficient PyKeOps implementation is used when PyKeOps is installed.
 - Otherwise, the naive PyTorch implementation is used as a fallback.
+
+NOTE: DO NOT import this module using star, i.e., `from cauchy import *`.
+This module uses global variables as module attributes. It will pollute your namespace.
 """
 import torch
 
@@ -24,6 +27,11 @@ def naive_cauchy_kernel(a0: torch.Tensor,
     k10 = (a1 * b0 / denominator).sum(dim=-1)
     k11 = (a1 * b1 / denominator).sum(dim=-1)
     return k00, k01, k10, k11
+
+
+cauchy_kernel_methods = {
+    "naive": naive_cauchy_kernel,
+}
 
 
 try:
@@ -59,11 +67,23 @@ try:
         k11 = (LazyTensor(a1 * b1) / denominator).sum_reduction(axis=2).squeeze(-1)
         return k00, k01, k10, k11
 
+    cauchy_kernel_methods["pykeops"] = pykeops_cauchy_kernel
+    print("Using PyKeOps Cauchy kernel.")
     cauchy_kernel = pykeops_cauchy_kernel
 
 except ModuleNotFoundError:
-    print("WARNING: PyKeOps not found, using the naive Cauchy kernel method.")
+    print("PyKeOps not found, using the naive Cauchy kernel method.")
     cauchy_kernel = naive_cauchy_kernel
+
+
+def select_method(name: str, silent=False):
+    global cauchy_kernel, cauchy_kernel_methods
+    if name in cauchy_kernel_methods:
+        cauchy_kernel = cauchy_kernel_methods[name]
+        if not silent:
+            print("Switched to Cauchy kernel method:", name)
+    else:
+        raise ValueError("Cauchy kernel method is unavailable:", name)
 
 
 if __name__ == "__main__":

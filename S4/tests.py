@@ -1,7 +1,7 @@
 import unittest
 from . layer import *
 from . block import *
-from . cauchy import *
+from . import cauchy
 
 
 class TestS4Components(unittest.TestCase):
@@ -253,8 +253,8 @@ class TestS4Components(unittest.TestCase):
         Test the equivalence of naive Cauchy kernel and PyKeOps Cauchy kernel.
         """
         try:
-            pykeops_cauchy_kernel  # type: ignore
-        except NameError:
+            cauchy.pykeops_cauchy_kernel  # type: ignore
+        except AttributeError:
             self.skipTest("PyKeOps is not installed.")
 
         L = 16
@@ -283,9 +283,26 @@ class TestS4Components(unittest.TestCase):
             g = g.to(device)
             Lambda = Lambda.to(device)
 
-        naive_ks = naive_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
-        pykeops_ks = pykeops_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+        naive_ks = cauchy.naive_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+        pykeops_ks = cauchy.pykeops_cauchy_kernel(a0, a1, b0, b1, g, Lambda)
 
         for a, b in zip(naive_ks, pykeops_ks):
             self.assertEqual(type(a), type(b))
             self.assertTrue(torch.allclose(a, b, atol=1e-6, rtol=1e-6))
+
+    def test_cauchy_naive_pykeops_switch(self):
+        try:
+            cauchy.pykeops_cauchy_kernel  # type: ignore
+        except AttributeError:
+            self.skipTest("PyKeOps is not installed.")
+
+        self.assertEqual(cauchy.cauchy_kernel, cauchy.pykeops_cauchy_kernel)
+        cauchy.select_method("naive", silent=True)
+        self.assertEqual(cauchy.cauchy_kernel, cauchy.naive_cauchy_kernel)
+        cauchy.select_method("pykeops", silent=True)
+        self.assertEqual(cauchy.cauchy_kernel, cauchy.pykeops_cauchy_kernel)
+
+        with self.assertRaises(ValueError):
+            cauchy.select_method("sadfsd", silent=True)
+
+        self.assertEqual(cauchy.cauchy_kernel, cauchy.pykeops_cauchy_kernel)

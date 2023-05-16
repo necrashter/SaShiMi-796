@@ -4,7 +4,7 @@ Implementation of S4 layer with related components.
 import torch
 import torch.nn.functional as F
 from torch import nn
-from . cauchy import cauchy_kernel
+from . import cauchy
 
 
 def init_HiPPO(signal_dim: int, state_dim: int):
@@ -215,7 +215,7 @@ def conv_kernel_DPLR(Lambda, P, Q, B, C, step, Omega):
     g = (2.0 / step) * ((1.0 - Omega) / (1.0 + Omega))
     # Size of cauchy_denominator: SxN
     # Cauchy dot products
-    k00, k01, k10, k11 = cauchy_kernel(a0, a1, b0, b1, g, Lambda)
+    k00, k01, k10, k11 = cauchy.cauchy_kernel(a0, a1, b0, b1, g, Lambda)
 
     evaluated = (2.0 / (1.0 + Omega)) * (k00 - k01 * (1.0 / (1.0 + k11)) * k10)
     out = torch.fft.ifft(evaluated)
