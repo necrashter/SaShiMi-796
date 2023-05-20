@@ -299,7 +299,7 @@ class S4Base(nn.Module):
         self.D = nn.parameter.Parameter(torch.randn(signal_dim))
 
         # Step size is a learnable parameter but stored as log.
-        self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1))
+        self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1).log())
 
         # The roots of unity is cached in order to compute the convolution kernel faster.
         # Note that it's a buffer, not a parameter. It won't be trained.
