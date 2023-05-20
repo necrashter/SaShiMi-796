@@ -49,3 +49,22 @@ python3 -m unittest
 ```
 
 We also have a GitHub Actions Workflow for running these tests.
+
+
+## Cauchy Kernel Benchmark
+
+`S4/cauchy.py` can be run as a standalone script. It will perform the same Cauchy kernel computation using the naive and PyKeOps method, and then compare the results.
+
+Run the following script to get more information about the command line arguments:
+```bash
+python3 S4/cauchy.py -h
+```
+
+If you run the benchmark with a large enough sequence length, the naive method will fail due to out of memory error. PyKeOps, on the other hand, should be able handle this with no problems:
+```bash
+python3 S4/cauchy.py -l 64000
+```
+
+It also reports the maximum difference between the matrices computed by these two methods.
+Currently, this value is quite large (~0.001); however, all unit tests that compare these two methods pass.
+This might be caused by the random initialization of the inputs in the benchmark.
