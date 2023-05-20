@@ -1,0 +1,6 @@
+Paper title: It’s Raw! Audio Generation with State-Space Models
+Paper link: https://proceedings.mlr.press/v162/goel22a/goel22a.pdf
+
+Qualitative results: Examples on section 1, https://hazyresearch.stanford.edu/sashimi-examples/
+
+Quantitative results: Table 4, column 1. Reproducing columns 2 and 3 is not feasible because it relies on human feedback.
