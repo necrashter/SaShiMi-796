@@ -44,6 +44,19 @@ pip3 install pykeops[full]
 ```
 
 
+## Downloading the Data
+
+Due to their large size, YouTube Mix dataset and pre-trained models are not included in this repository.
+To download these, you can simply run `download_data.sh`.
+`wget` and `unzip` programs must be installed.
+
+```bash
+./download_data.sh
+```
+
+Note that MNIST dataset comes from [PyTorch's MNIST class](https://pytorch.org/vision/main/generated/torchvision.datasets.MNIST.html), it will be downloaded automatically at runtime when needed.
+
+
 ## Unit Tests
 
 This repository contains numerous unit tests for both S4 and SaShiMi.
