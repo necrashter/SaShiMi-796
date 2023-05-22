@@ -7,6 +7,7 @@ import glob
 import os
 from scipy.io import wavfile
 from torch.utils.data import Dataset
+from torchaudio.functional import mu_law_encoding
 
 
 def read_wavs(root_dir):
@@ -123,4 +124,59 @@ class YoutubeMixTransform:
         if self.device is not None:
             x = x.to(self.device)
             y = y.to(self.device)
+        return x, y
+
+
+class SC09(Dataset):
+    """
+    Represents a folder of WAV files from SC09 dataset.
+    Each WAV file must be 1 second long with 16000 Hz bitrate.
+    """
+    def __init__(self, root_dir, device=None):
+        """
+        Arguments:
+            root_dir (string): Directory with all the WAV files.
+            device: Torch device to which the samples will be moved.
+        """
+        self.root_dir = root_dir
+        self.wav_paths = sorted(glob.glob(os.path.join(root_dir, "*.wav")))
+        self.device = device
+
+        # Check the dataset
+        print("WAV files in directory:", len(self.wav_paths))
+        good = []
+        for path in self.wav_paths:
+            sample_rate, wav = wavfile.read(path)
+            length = wav.shape[0]
+            if sample_rate != 16000:
+                raise ValueError(f"WAV file {path} doesn't have a sample rate of 16000 Hz. " +
+                                 f"({sample_rate} Hz)")
+            if length != 16000:
+                good.append(False)
+                continue
+            good.append(True)
+
+        num_bad = len([i for i in good if not i])
+        if num_bad > 0:
+            self.wav_paths = [path for path, condition in zip(self.wav_paths, good) if condition]
+            print(num_bad, "WAV file(s) were discarded because they were not 1 second long.")
+
+    def __len__(self):
+        return len(self.wav_paths)
+
+    def __getitem__(self, idx):
+        path = self.wav_paths[idx]
+        audio = wavfile.read(path)[1]
+        # 16 bit signed into float -1 to +1
+        audio = (torch.from_numpy(audio) / 2**15)
+        
+        x = torch.cat([torch.zeros(1), audio[:-1]], dim=0)
+        x = x.unsqueeze(-1)
+
+        if self.device is not None:
+            audio = audio.to(self.device)
+            x = x.to(self.device)
+
+        y = mu_law_encoding(audio, 256).to(torch.int64)
+
         return x, y
