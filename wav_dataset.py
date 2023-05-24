@@ -23,6 +23,9 @@ def read_wavs(root_dir):
     wav_paths = sorted(glob.glob(os.path.join(root_dir, "*.wav")))
     wavs = [wavfile.read(path) for path in wav_paths]
 
+    if not wavs:
+        raise ValueError("There are no WAV files in the given path!")
+
     # Check if all sample rates are the same
     sample_rates = [i[0] for i in wavs]
     sample_rate = sample_rates[0]
@@ -111,19 +114,21 @@ class YoutubeMixTransform:
     def __call__(self, audio):
         """
         Returns:
-        - x: Samples 0 to N-1, each sample is a float between -1 and +1.
-        - y: Samples 1 to N, each sample is an integer between 0 to 255.
+        - x: Samples 0 to N-1
+        - y: Samples 1 to N
+
+        Each sample is an integer between 0 to 255, encoded using mu-law.
         """
+        audio = torch.from_numpy(audio)
+
+        if self.device is not None:
+            audio = audio.to(self.device)
+
         # 16 bit signed into float -1 to +1
-        audio = (torch.from_numpy(audio) / 2**15)
+        audio = audio / 2**15
+        audio = mu_law_encoding(audio, 256).to(torch.int64)
         x = audio[:-1]  # First samples
         y = audio[1:]   # Last samples
-        # Make y labels from 0 to 255
-        y = torch.clamp((y / 2.0) + 0.5, 0.0, 1.0)
-        y = torch.mul(y, 255.0).to(torch.int64)
-        if self.device is not None:
-            x = x.to(self.device)
-            y = y.to(self.device)
         return x, y
 
 
