@@ -218,12 +218,25 @@ class CausalPooledResidual(nn.Module):
         return f
 
 
+class Embedding(torch.nn.Embedding):
+    def get_recurrent_runner(self):
+        """
+        Returns a function that maps given single dimensional input to output.
+        """
+        def f(x):
+            return self(x).squeeze(0)
+
+        return f
+
+
 def SaShiMi(input_dim: int,
             hidden_dim: int,
             output_dim: int,
             state_dim: int,
             sequence_length: int,
             block_count: int,
+            encoder=None,
+            decoder=None,
            ):
     """
     Construct the SaShiMi architecture given in Figure 1 of "It’s Raw! Audio Generation with
@@ -234,8 +247,10 @@ def SaShiMi(input_dim: int,
     - state_dim, sequence_length: Parameters for S4 blocks.
     - block_count: Number of S4 blocks in each series of S4 Blocks.
     """
+    encoder = nn.Linear(input_dim, hidden_dim) if encoder is None else encoder
+    decoder = nn.Linear(hidden_dim, output_dim) if decoder is None else decoder
     return Sequential(
-        nn.Linear(input_dim, hidden_dim),
+        encoder,
         CausalPooledResidual(
             signal_dim = hidden_dim,
             layers = [
@@ -251,5 +266,5 @@ def SaShiMi(input_dim: int,
             ],
         ),
         *[S4Block(hidden_dim, state_dim, sequence_length) for _ in range(block_count)],
-        nn.Linear(hidden_dim, output_dim),
+        decoder,
     )

@@ -169,14 +169,13 @@ class SC09(Dataset):
         audio = wavfile.read(path)[1]
         # 16 bit signed into float -1 to +1
         audio = (torch.from_numpy(audio) / 2**15)
-        
-        x = torch.cat([torch.zeros(1), audio[:-1]], dim=0)
-        x = x.unsqueeze(-1)
+        audio = torch.nn.functional.pad(audio, (1, 0))
 
         if self.device is not None:
             audio = audio.to(self.device)
-            x = x.to(self.device)
 
-        y = mu_law_encoding(audio, 256).to(torch.int64)
+        audio = mu_law_encoding(audio, 256).to(torch.int64)
+        x = audio[:-1]
+        y = audio[1:]
 
         return x, y
