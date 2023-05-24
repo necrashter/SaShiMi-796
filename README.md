@@ -57,6 +57,28 @@ To download these, you can simply run `download_data.sh`.
 Note that MNIST dataset comes from [PyTorch's MNIST class](https://pytorch.org/vision/main/generated/torchvision.datasets.MNIST.html), it will be downloaded automatically at runtime when needed.
 
 
+## Training Script
+
+Since the training on the full dataset takes a lot of time, we have created a dedicated training script for that instead of putting it into the Jupyter Notebooks.
+
+The following script will train the SaShiMi model on the SC09 dataset located at `./datasets/sc09/train/` and save the model checkpoints at `./models/sc09/` after each epoch:
+```bash
+python3 train_sc09.py
+```
+The directory `./models/sc09` must be present.
+When it's first run, it will begin the training from scratch and continue indefinitely until a keyboard interrupt occurs.
+In the successive runs, it will load the latest saved checkpoint and continue.
+
+The script doesn't have a command line interface, nor is it configurable via other config files.
+Since the script is really simple, it's intended to be modified.
+For example, you can interrupt the training at any time and change the learning rate by modifying line 57:
+```python
+# Update LR
+for group in optimizer.param_groups:
+    group["lr"] = 0.001
+```
+
+
 ## Unit Tests
 
 This repository contains numerous unit tests for both S4 and SaShiMi.
