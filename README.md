@@ -65,13 +65,12 @@ The following script will train the SaShiMi model on the SC09 dataset located at
 ```bash
 python3 train_sc09.py
 ```
-The directory `./models/sc09` must be present.
 When it's first run, it will begin the training from scratch and continue indefinitely until a keyboard interrupt occurs.
 In the successive runs, it will load the latest saved checkpoint and continue.
 
 The script doesn't have a command line interface, nor is it configurable via other config files.
 Since the script is really simple, it's intended to be modified.
-For example, you can interrupt the training at any time and change the learning rate by modifying line 57:
+For example, you can interrupt the training at any time and change the learning rate by modifying line 66:
 ```python
 # Update LR
 for group in optimizer.param_groups:

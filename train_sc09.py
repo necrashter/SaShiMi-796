@@ -1,3 +1,4 @@
+import os
 import torch
 import glob
 from torch.utils.data import DataLoader
@@ -10,12 +11,17 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 train_dataset = SC09("./datasets/sc09/train", device=device)
-# train_dataloader = [train_dataset[0]]
+validation_dataset = SC09("./datasets/sc09/validation", device=device)
 train_dataloader = DataLoader(train_dataset, batch_size=8, shuffle=True)
+validation_dataloader = DataLoader(validation_dataset, batch_size=8, shuffle=False)
 
 torch.manual_seed(42)
 
-model_prefix = "./models/sc09/epoch"
+model_dir = "./models/sc09/"
+if not os.path.exists(model_dir):
+   os.makedirs(model_dir)
+
+model_prefix = model_dir + "epoch"
 
 model = SaShiMi(
     input_dim=1,
@@ -33,6 +39,9 @@ for module in model.modules():
         module.B.requires_grad = False
         module.P.requires_grad = False
 
+print("Total parameters:", sum([i.nelement() for i in model.parameters()]))
+print("Parameters to be learned:", sum([i.nelement() if i.requires_grad else 0 for i in model.parameters()]))
+
 optimizer = torch.optim.AdamW(model.parameters())
 criterion = torch.nn.CrossEntropyLoss()
 epoch = 0
@@ -47,7 +56,7 @@ if models:
     optimizer.load_state_dict(checkpoint["optimizer_state"])
     print("Using pretrained model:", model_path)
     epoch = int(model_path[len(model_prefix):-3])
-    print("Epoch:", epoch)
+    print("Continuing from epoch:", epoch)
 else:
     print("Starting training from scratch")
 
@@ -59,21 +68,40 @@ for group in optimizer.param_groups:
 
 model.train()
 while True:
-    train_loss = 0.0
+    train_loss = torch.tensor(0.0, requires_grad=False)
     for x, y in tqdm(train_dataloader, leave=False):
         y_hat = model(x)
         loss = criterion(y_hat.view(-1, 256), y.view(-1))
-
-        loss_val = loss.detach().cpu().item()
-        train_loss += loss_val
+        train_loss += loss.detach().cpu() * x.size(dim=0)
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
+    train_loss /= len(train_dataset)
 
-    train_loss /= len(train_dataloader)
+    with torch.no_grad():
+        validation_loss = torch.tensor(0.0, requires_grad=False)
+        for x, y in tqdm(validation_dataloader, leave=False):
+            y_hat = model(x)
+            loss = criterion(y_hat.view(-1, 256), y.view(-1))
+            validation_loss += loss.detach().cpu() * x.size(dim=0)
+        validation_loss /= len(validation_dataset)
+
+
     epoch += 1
-    print("Epoch", epoch, "train loss:", train_loss)
+    print(f"EPOCH {epoch:4}",
+          "| Train loss:",
+          f"{train_loss.item():20}",
+          f"{(train_loss / torch.tensor(2.0).log()).item():20}",
+          "| Validation loss:",
+          f"{validation_loss.item():20}",
+          f"{(validation_loss / torch.tensor(2.0).log()).item():20}",
+          )
+
+    with open(model_dir + "validation_loss.txt", "a") as f:
+        print(validation_loss.item(), file=f)
+    with open(model_dir + "train_loss.txt", "a") as f:
+        print(train_loss.item(), file=f)
 
     torch.save({
         "model_state": model.state_dict(),
