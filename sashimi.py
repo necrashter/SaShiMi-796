@@ -55,6 +55,31 @@ def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_fac
     )
 
 
+def S4BlockGLU(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
+    """
+    Same as S4Block, but it features a GLU layer after the last linear layer.
+
+    See Appendix C.2.1 in "It's Raw! Audio Generation with State-Space Models":
+    > On SC09, we found that swapping in a gated linear unit (GLU) in the S4 block improved
+    > NLL as well as sample quality.
+    """
+    return Sequential(
+        Residual(
+            nn.LayerNorm(signal_dim),
+            S4Base(signal_dim, state_dim, sequence_length),
+            nn.GELU(),
+            nn.Linear(signal_dim, signal_dim),
+        ),
+        Residual(
+            nn.LayerNorm(signal_dim),
+            nn.Linear(signal_dim, signal_dim * expansion_factor),
+            nn.GELU(),
+            nn.Linear(signal_dim * expansion_factor, signal_dim * 2),
+            nn.GLU(),  # GLU halves the last dimension
+        ),
+    )
+
+
 class DownPool(nn.Module):
     """
     Let p be the pooling factor and q the expansion factor.
@@ -235,6 +260,7 @@ def SaShiMi(input_dim: int,
             state_dim: int,
             sequence_length: int,
             block_count: int,
+            block_class=S4Block,
             encoder=None,
             decoder=None,
            ):
@@ -246,6 +272,9 @@ def SaShiMi(input_dim: int,
     - output_dim: Output signal dimension.
     - state_dim, sequence_length: Parameters for S4 blocks.
     - block_count: Number of S4 blocks in each series of S4 Blocks.
+    - block_class: S4 block class. Can be S4Block or S4BlockGLU.
+    - encoder: Optional encoder layer. A linear layer is constructed if not provided.
+    - decoder: Optional decoder layer. A linear layer is constructed if not provided.
     """
     encoder = nn.Linear(input_dim, hidden_dim) if encoder is None else encoder
     decoder = nn.Linear(hidden_dim, output_dim) if decoder is None else decoder
@@ -257,14 +286,14 @@ def SaShiMi(input_dim: int,
                 CausalPooledResidual(
                     signal_dim = hidden_dim * 2,
                     layers = [Residual(*[
-                        S4Block(4 * hidden_dim, state_dim, sequence_length // 16)
+                        block_class(4 * hidden_dim, state_dim, sequence_length // 16)
                         for _ in range(block_count)
                     ])],
                 ),
-                *[S4Block(2 * hidden_dim, state_dim, sequence_length // 4)
+                *[block_class(2 * hidden_dim, state_dim, sequence_length // 4)
                   for _ in range(block_count)],
             ],
         ),
-        *[S4Block(hidden_dim, state_dim, sequence_length) for _ in range(block_count)],
+        *[block_class(hidden_dim, state_dim, sequence_length) for _ in range(block_count)],
         decoder,
     )

@@ -76,8 +76,13 @@ class TestS4Components(unittest.TestCase):
 
     def test_S4Block_dimensions(self):
         L = 16
-        s4block = S4Block(2, 4, L)
         x = torch.randn(L, 2)
+
+        s4block = S4Block(2, 4, L)
+        y = s4block(x)
+        self.assertEqual(x.size(), y.size())
+
+        s4block = S4BlockGLU(2, 4, L)
         y = s4block(x)
         self.assertEqual(x.size(), y.size())
 
