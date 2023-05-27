@@ -1,6 +1,9 @@
 import torch
 from torch import nn
 from S4 import *
+from torchaudio.functional import mu_law_encoding
+from tqdm.auto import tqdm
+import sys
 
 
 def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
@@ -228,12 +231,12 @@ class CausalPooledResidual(nn.Module):
             input_cache.append(u)
 
             if len(input_cache) == self.pooling_factor:
-                x = torch.stack(input_cache)
+                x = torch.cat(input_cache, dim=-2)
                 input_cache.clear()
                 output_cache.clear()
-                y = self.down_pool(x).squeeze()
-                y = self.up_pool.no_shift(sequential(y).unsqueeze(0))
-                output_cache = [i for i in y.squeeze(0)]
+                y = self.down_pool(x)
+                y = self.up_pool.no_shift(sequential(y))
+                output_cache = [i for i in torch.split(y, 1, dim=-2)]
                 output_cache.reverse()
 
             return output
@@ -242,14 +245,7 @@ class CausalPooledResidual(nn.Module):
 
 
 class Embedding(torch.nn.Embedding):
-    def get_recurrent_runner(self):
-        """
-        Returns a function that maps given single dimensional input to output.
-        """
-        def f(x):
-            return self(x).squeeze(0)
-
-        return f
+    pass
 
 
 def SaShiMi(input_dim: int,
@@ -300,46 +296,62 @@ def SaShiMi(input_dim: int,
 def generate_audio_sample(
         model,
         sample_count: int,
+        batch_size: int = 1,
         priming_signal=None,
+        starting_input=None,
         maxp=False,
     ):
     """
     Generate an audio sample autoregressively from the model using 8-bit mu-law encoding.
+    - model: Autoregressive audio model.
+    - sample_count: Number of total samples in the output.
+    - batch_size: Number of generated audio files.
+    - priming_signal: Model will complete this signal if given.
+                      The model will generate sample_count - priming_signal.size(0) samples.
+                      The priming signal will be included in the output if provided.
+    - starting_input: Normally, one sample of silence will be given to the model to start
+                      the generation. If this argument is given, it will be used instead.
+    - maxp: If true, the option with the highest probability will be selected instead of
+            random sampling.
+
+    Returns:
+    - A tensor of shape (batch_size, sample_count), containing samples in mu-law encoding.
     """
     f = model.get_recurrent_runner()
     # Pad the input with 0 sample to get started.
     device = next(model.parameters()).device
-    u = f(mu_law_encoding(torch.zeros(1, device=device), 256))
+    if starting_input is None:
+        starting_input = mu_law_encoding(torch.zeros(batch_size, 1, device=device), 256)
+    u = f(starting_input)
 
     # Process the priming signal if given
     if priming_signal is not None:
         for s in priming_signal:
-            u = f(s)
+            u = f(s.reshape(1, -1).expand(batch_size, -1))
         primed_size = priming_signal.size(0)
     else:
         primed_size = 0
 
     # Generate the new part
     Y = []
-    # Don't use tqdm while testing
     iterator = range(sample_count - primed_size)
+    # Don't use tqdm while testing
     if "unittest" not in sys.modules:
         iterator = tqdm(iterator, leave=False)
     for _ in iterator:
         if maxp:
-            p = torch.argmax(u)
+            p = torch.argmax(u, dim=-1)
         else:
             dist = torch.distributions.categorical.Categorical(
                 probs=torch.nn.functional.softmax(u, dim=-1),
             )
             p = dist.sample()
         Y.append(p)
-        u = p.reshape(1)
-        u = f(u)
+        u = f(p)
 
-    generated = torch.stack(Y)
+    generated = torch.cat(Y, dim=1)
     if priming_signal is not None:
         priming_signal = priming_signal.flatten()
-        return torch.cat([priming_signal, generated], dim=0)
+        return torch.cat([priming_signal.reshape(1, -1), generated], dim=1)
     else:
         return generated

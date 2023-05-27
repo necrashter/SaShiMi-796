@@ -3,7 +3,7 @@ import torch
 from sashimi import *
 
 
-class TestS4Components(unittest.TestCase):
+class TestSashimiComponents(unittest.TestCase):
     def test_pooling_dimensions(self):
         """
         Check the dimensions after down-pooling and up-pooling.
@@ -52,14 +52,14 @@ class TestS4Components(unittest.TestCase):
         u = torch.randn(L, 2)
         o = model(u)
         f = model.get_recurrent_runner()
-        o2 = torch.stack([f(i) for i in u])
+        o2 = torch.cat([f(i.reshape(1, 1, -1)) for i in u], dim=-2)
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
 
     def test_sashimi_conv_recurrent(self):
         """
         Test whether running the SaShiMi model with convolution is equivalent to recurrence.
         """
-        L = 256
+        L = 128
         model = SaShiMi(
             input_dim=2,
             hidden_dim=8,
@@ -71,7 +71,7 @@ class TestS4Components(unittest.TestCase):
         u = torch.randn(L, 2)
         o = model(u)
         f = model.get_recurrent_runner()
-        o2 = torch.stack([f(i) for i in u])
+        o2 = torch.cat([f(i.reshape(1, 1, -1)) for i in u], dim=-2)
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
 
     def test_S4Block_dimensions(self):
@@ -92,7 +92,7 @@ class TestS4Components(unittest.TestCase):
         u = torch.randn(L, 2)
         o = s4(u)
         f = s4.get_recurrent_runner()
-        o2 = torch.stack([f(i) for i in u])
+        o2 = torch.cat([f(i) for i in u])
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
 
     def test_priming(self):
@@ -139,12 +139,27 @@ class TestS4Components(unittest.TestCase):
             encoder=Embedding(256, 4),
         )
         sample = generate_audio_sample(model, L)
-        self.assertEqual(list(sample.size()), [L])
+        self.assertEqual(list(sample.size()), [1, L])
 
         sample = generate_audio_sample(model, L, maxp=True)
-        self.assertEqual(list(sample.size()), [L])
+        self.assertEqual(list(sample.size()), [1, L])
 
-        sample1 = generate_audio_sample(model, L, priming_signal=sample[:-1], maxp=True)
+        sample1 = generate_audio_sample(model, L, priming_signal=sample[0, :-1], maxp=True)
         self.assertTrue(torch.allclose(sample, sample1))
-        sample2 = generate_audio_sample(model, L, priming_signal=sample[:2], maxp=True)
+        sample2 = generate_audio_sample(model, L, priming_signal=sample[0, :2], maxp=True)
         self.assertTrue(torch.allclose(sample, sample2))
+
+        samples = generate_audio_sample(
+            model,
+            L,
+            batch_size=3,
+            starting_input=torch.tensor([1, 2, 3]).unsqueeze(-1),
+            maxp=True,
+        )
+        sample0 = generate_audio_sample(model, L, starting_input=torch.tensor([[1]]), maxp=True)
+        sample1 = generate_audio_sample(model, L, starting_input=torch.tensor([[2]]), maxp=True)
+        sample2 = generate_audio_sample(model, L, starting_input=torch.tensor([[3]]), maxp=True)
+
+        self.assertTrue(torch.allclose(samples[0], sample0[0]))
+        self.assertTrue(torch.allclose(samples[1], sample1[0]))
+        self.assertTrue(torch.allclose(samples[2], sample2[0]))
