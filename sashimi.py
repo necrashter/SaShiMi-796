@@ -140,9 +140,7 @@ class CausalUpPool(UpPool):
     """
     def forward(self, x):
         # Use shifting to preserve causality
-        pad = torch.zeros(x.size(dim=0), 1, x.size(dim=2), device=x.device)
-        # Shift all elements to the right, discard last, pad the beginning with zero.
-        x = torch.cat([pad, x[:, :-1, :]], dim=1)
+        x = torch.nn.functional.pad(x[:, :-1, :], pad=(0, 0, 1, 0))
         return self.no_shift(x)
 
 
