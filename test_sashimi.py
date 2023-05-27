@@ -126,3 +126,25 @@ class TestS4Components(unittest.TestCase):
         gen1 = torch.stack(generated[8:])
         gen2 = torch.stack(gen2)
         self.assertTrue(torch.allclose(gen1, gen2, atol=1e-6, rtol=1e-6))
+
+    def test_sashimi_audio_generation(self):
+        L = 64
+        model = SaShiMi(
+            input_dim=1,
+            hidden_dim=4,
+            output_dim=1,
+            state_dim=4,
+            sequence_length=L,
+            block_count=2,
+            encoder=Embedding(256, 4),
+        )
+        sample = generate_audio_sample(model, L)
+        self.assertEqual(list(sample.size()), [L])
+
+        sample = generate_audio_sample(model, L, maxp=True)
+        self.assertEqual(list(sample.size()), [L])
+
+        sample1 = generate_audio_sample(model, L, priming_signal=sample[:-1], maxp=True)
+        self.assertTrue(torch.allclose(sample, sample1))
+        sample2 = generate_audio_sample(model, L, priming_signal=sample[:2], maxp=True)
+        self.assertTrue(torch.allclose(sample, sample2))

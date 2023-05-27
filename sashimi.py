@@ -295,3 +295,51 @@ def SaShiMi(input_dim: int,
         *[block_class(hidden_dim, state_dim, sequence_length) for _ in range(block_count)],
         decoder,
     )
+
+
+def generate_audio_sample(
+        model,
+        sample_count: int,
+        priming_signal=None,
+        maxp=False,
+    ):
+    """
+    Generate an audio sample autoregressively from the model using 8-bit mu-law encoding.
+    """
+    f = model.get_recurrent_runner()
+    # Pad the input with 0 sample to get started.
+    device = next(model.parameters()).device
+    u = f(mu_law_encoding(torch.zeros(1, device=device), 256))
+
+    # Process the priming signal if given
+    if priming_signal is not None:
+        for s in priming_signal:
+            u = f(s)
+        primed_size = priming_signal.size(0)
+    else:
+        primed_size = 0
+
+    # Generate the new part
+    Y = []
+    # Don't use tqdm while testing
+    iterator = range(sample_count - primed_size)
+    if "unittest" not in sys.modules:
+        iterator = tqdm(iterator, leave=False)
+    for _ in iterator:
+        if maxp:
+            p = torch.argmax(u)
+        else:
+            dist = torch.distributions.categorical.Categorical(
+                probs=torch.nn.functional.softmax(u, dim=-1),
+            )
+            p = dist.sample()
+        Y.append(p)
+        u = p.reshape(1)
+        u = f(u)
+
+    generated = torch.stack(Y)
+    if priming_signal is not None:
+        priming_signal = priming_signal.flatten()
+        return torch.cat([priming_signal, generated], dim=0)
+    else:
+        return generated
