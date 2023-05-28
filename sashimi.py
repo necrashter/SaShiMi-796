@@ -71,14 +71,14 @@ def S4BlockGLU(signal_dim: int, state_dim: int, sequence_length: int, expansion_
             nn.LayerNorm(signal_dim),
             S4Base(signal_dim, state_dim, sequence_length),
             nn.GELU(),
-            nn.Linear(signal_dim, signal_dim),
+            nn.Linear(signal_dim, signal_dim * 2),
+            nn.GLU(),  # GLU halves the last dimension
         ),
         Residual(
             nn.LayerNorm(signal_dim),
             nn.Linear(signal_dim, signal_dim * expansion_factor),
             nn.GELU(),
-            nn.Linear(signal_dim * expansion_factor, signal_dim * 2),
-            nn.GLU(),  # GLU halves the last dimension
+            nn.Linear(signal_dim * expansion_factor, signal_dim),
         ),
     )
 

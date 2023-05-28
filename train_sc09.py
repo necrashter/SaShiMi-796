@@ -30,6 +30,7 @@ model = SaShiMi(
     state_dim=64,
     sequence_length=16000,
     block_count=8,
+    block_class=S4BlockGLU,
     encoder=Embedding(256, 64),
 ).to(device)
 
