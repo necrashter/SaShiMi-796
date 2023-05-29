@@ -291,7 +291,7 @@ class S4Base(nn.Module):
 
         # Standard normal initialization works better than xavier_normal_ initialization
         # on this parameter.
-        C = torch.randn(1, state_dim, dtype=torch.complex64)
+        C = torch.randn(signal_dim, state_dim, dtype=torch.complex64)
         # nn.init.xavier_normal_(C)
         self.C = nn.parameter.Parameter(torch.view_as_real(C))
 
