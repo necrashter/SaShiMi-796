@@ -300,6 +300,7 @@ def generate_audio_sample(
         priming_signal=None,
         starting_input=None,
         maxp=False,
+        use_tqdm=True,
     ):
     """
     Generate an audio sample autoregressively from the model using 8-bit mu-law encoding.
@@ -313,6 +314,7 @@ def generate_audio_sample(
                       the generation. If this argument is given, it will be used instead.
     - maxp: If true, the option with the highest probability will be selected instead of
             random sampling.
+    - use_tqdm: Use tqdm library to display a progress bar.
 
     Returns:
     - A tensor of shape (batch_size, sample_count), containing samples in mu-law encoding.
@@ -336,7 +338,7 @@ def generate_audio_sample(
     Y = []
     iterator = range(sample_count - primed_size)
     # Don't use tqdm while testing
-    if "unittest" not in sys.modules:
+    if use_tqdm:
         iterator = tqdm(iterator, leave=False)
     for _ in iterator:
         if maxp:

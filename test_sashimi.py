@@ -138,15 +138,15 @@ class TestSashimiComponents(unittest.TestCase):
             block_count=2,
             encoder=Embedding(256, 4),
         )
-        sample = generate_audio_sample(model, L)
+        sample = generate_audio_sample(model, L, use_tqdm=False)
         self.assertEqual(list(sample.size()), [1, L])
 
-        sample = generate_audio_sample(model, L, maxp=True)
+        sample = generate_audio_sample(model, L, maxp=True, use_tqdm=False)
         self.assertEqual(list(sample.size()), [1, L])
 
-        sample1 = generate_audio_sample(model, L, priming_signal=sample[0, :-1], maxp=True)
+        sample1 = generate_audio_sample(model, L, priming_signal=sample[0, :-1], maxp=True, use_tqdm=False)
         self.assertTrue(torch.allclose(sample, sample1))
-        sample2 = generate_audio_sample(model, L, priming_signal=sample[0, :2], maxp=True)
+        sample2 = generate_audio_sample(model, L, priming_signal=sample[0, :2], maxp=True, use_tqdm=False)
         self.assertTrue(torch.allclose(sample, sample2))
 
         samples = generate_audio_sample(
@@ -155,10 +155,11 @@ class TestSashimiComponents(unittest.TestCase):
             batch_size=3,
             starting_input=torch.tensor([1, 2, 3]).unsqueeze(-1),
             maxp=True,
+            use_tqdm=False,
         )
-        sample0 = generate_audio_sample(model, L, starting_input=torch.tensor([[1]]), maxp=True)
-        sample1 = generate_audio_sample(model, L, starting_input=torch.tensor([[2]]), maxp=True)
-        sample2 = generate_audio_sample(model, L, starting_input=torch.tensor([[3]]), maxp=True)
+        sample0 = generate_audio_sample(model, L, starting_input=torch.tensor([[1]]), maxp=True, use_tqdm=False)
+        sample1 = generate_audio_sample(model, L, starting_input=torch.tensor([[2]]), maxp=True, use_tqdm=False)
+        sample2 = generate_audio_sample(model, L, starting_input=torch.tensor([[3]]), maxp=True, use_tqdm=False)
 
         self.assertTrue(torch.allclose(samples[0], sample0[0]))
         self.assertTrue(torch.allclose(samples[1], sample1[0]))
