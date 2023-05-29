@@ -277,9 +277,17 @@ class S4Base(nn.Module):
         - sequence_length: The length of the sequence on which this model will operate.
             - Can be changed later, but models trained on one sequence length perform
               poorly on another sequence length.
+
+        The parameters for A and B matrices will be tied.
         """
         super().__init__()
-        Lambda, _, P, B = init_DPLR_HiPPO(signal_dim, state_dim)
+        # For parameter tying, we simply set the signal dimension to 1 for A and B matrices.
+        # Broadcasting will take care of the rest.
+        Lambda, _, P, B = init_DPLR_HiPPO(1, state_dim)
+        # NOTE: If you use signal_dim here instead of 1, the same A matrix will still be
+        # shared along the signal dimension. Learning a separate A matrix is for each
+        # dimension is not implemented.
+
         # We need to store complex tensors as real tensors, otherwise some optimizers
         # (e.g. Adam) won't work. view_as_real returns an alias tensor with an additional
         # dimension (of size = 2, at the end) for real and complex parts.
