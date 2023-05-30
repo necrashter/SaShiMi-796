@@ -92,7 +92,7 @@ class TestSashimiComponents(unittest.TestCase):
         u = torch.randn(L, 2)
         o = s4(u)
         f = s4.get_recurrent_runner()
-        o2 = torch.cat([f(i) for i in u])
+        o2 = torch.stack([f(i) for i in u])
         self.assertTrue(torch.allclose(o, o2, atol=1e-5, rtol=1e-5))
 
     def test_priming(self):

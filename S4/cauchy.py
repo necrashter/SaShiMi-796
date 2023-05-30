@@ -19,9 +19,11 @@ def naive_cauchy_kernel(a0: torch.Tensor,
     """
     Compute the Cauchy kernel with naive method.
     """
+    # g: (SIGNAL, SAMPLES)
+    # Lambda: (STATE)
     denominator = g.unsqueeze(1) - Lambda
     # a0 to b1:    (SIGNAL, 1, STATE)
-    # denominator: (1, SAMPLES, STATE)
+    # denominator: (SIGNAL, SAMPLES, STATE)
     k00 = (a0 * b0 / denominator).sum(dim=-1)
     k01 = (a0 * b1 / denominator).sum(dim=-1)
     k10 = (a1 * b0 / denominator).sum(dim=-1)
@@ -50,8 +52,6 @@ try:
         # For PyKeOps, we need two tensors of shapes (..., M, 1, D) and (..., 1, N, D).
         # D = 1 in our case.
         # Let's use M for sequence_length and N for state_dim.
-        g = LazyTensor(g.view(-1, 1, 1))
-        Lambda = LazyTensor(Lambda.view(1, -1, 1))
         # NOTE: Running contiguous() can slow things down. There might be a more efficient
         # way to reshape these into the form that PyKeOps wants.
         a0 = a0.view(a0.size(dim=0), 1, -1, 1).contiguous()
@@ -59,8 +59,10 @@ try:
         b0 = b0.view(b0.size(dim=0), 1, -1, 1).contiguous()
         b1 = b1.view(b1.size(dim=0), 1, -1, 1).contiguous()
         # a0 to b1:    (SIGNAL,  1, STATE, 1)
-        # denominator:    (1, STATE, SAMPLES)
-        denominator = g - Lambda
+        # g: (SIGNAL, SAMPLES) -> (SIGNAL, SAMPLES, 1, 1)
+        # Lambda: (STATE) -> (1, STATE, 1)
+        # denominator: (SIGNAL, SAMPLES, STATE, 1)
+        denominator = LazyTensor(g.unsqueeze(-1).unsqueeze(-1)) - LazyTensor(Lambda.view(1, -1, 1))
         k00 = (LazyTensor(a0 * b0) / denominator).sum_reduction(axis=2).squeeze(-1)
         k01 = (LazyTensor(a0 * b1) / denominator).sum_reduction(axis=2).squeeze(-1)
         k10 = (LazyTensor(a1 * b0) / denominator).sum_reduction(axis=2).squeeze(-1)
@@ -122,7 +124,7 @@ if __name__ == "__main__":
         device = torch.device("cuda")
 
         a0, a1, b0, b1 = [torch.randn(signal_dim, 1, state_dim, dtype=dtype, device=device) for _ in range(4)]
-        g = torch.randn(sequence_length, dtype=dtype, device=device)
+        g = torch.randn(signal_dim, sequence_length, dtype=dtype, device=device)
         Lambda = torch.randn(state_dim, dtype=dtype, device=device)
 
         naive_ks = None
