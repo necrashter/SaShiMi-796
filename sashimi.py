@@ -60,7 +60,9 @@ def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_fac
 
 def S4BlockGLU(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
     """
-    Same as S4Block, but it features a GLU layer after the last linear layer.
+    Same as S4Block, but all activations (GELU) are replaced with a GLU layer. Since GLU halves
+    the signal dimensions, the output dimensions of the linear layers that precede GLU layers
+    are multiplied by 2.
 
     See Appendix C.2.1 in "It's Raw! Audio Generation with State-Space Models":
     > On SC09, we found that swapping in a gated linear unit (GLU) in the S4 block improved
@@ -70,14 +72,13 @@ def S4BlockGLU(signal_dim: int, state_dim: int, sequence_length: int, expansion_
         Residual(
             nn.LayerNorm(signal_dim),
             S4Base(signal_dim, state_dim, sequence_length),
-            nn.GELU(),
             nn.Linear(signal_dim, signal_dim * 2),
             nn.GLU(),  # GLU halves the last dimension
         ),
         Residual(
             nn.LayerNorm(signal_dim),
-            nn.Linear(signal_dim, signal_dim * expansion_factor),
-            nn.GELU(),
+            nn.Linear(signal_dim, signal_dim * expansion_factor * 2),
+            nn.GLU(),  # GLU halves the last dimension
             nn.Linear(signal_dim * expansion_factor, signal_dim),
         ),
     )
