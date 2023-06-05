@@ -10,11 +10,12 @@ _Samples from a SaShiMi model trained on MNIST. Green parts represent the primin
 
 This repository provides a re-implementation of this paper in PyTorch, developed as part of the course METU CENG 796 - Deep Generative Models.
 This re-implementation is provided by:
-* İlker Işık, e238051@metu.edu.tr 
+* İlker Işık, e238051@metu.edu.tr
 * Muhammed Can Keleş, e265013@metu.edu.tr
 
 Please see the following Jupyter Notebooks for more information:
 - [main.ipynb](main.ipynb): Summary of the paper, implementation notes and our experimental results.
+- [Ablation.ipynb](Ablation.ipynb): Our experiments with 2-Layer SaShiMi on Youtube Mix dataset.
 - [S4-MNIST-Demo.ipynb](S4-MNIST-Demo.ipynb): A demo on MNIST dataset that showcases the S4 layer, which is the main building block in SaShiMi.
 - [SaShiMi-MNIST-Demo.ipynb](SaShiMi-MNIST-Demo.ipynb): Training and testing the SaShiMi model on MNIST dataset.
 
@@ -59,18 +60,24 @@ Note that MNIST dataset comes from [PyTorch's MNIST class](https://pytorch.org/v
 
 ## Training Script
 
-Since the training on the full dataset takes a lot of time, we have created a dedicated training script for that instead of putting it into the Jupyter Notebooks.
+Since the training on the full dataset takes a lot of time, we have created a dedicated training scripts for that instead of putting it into the Jupyter Notebooks.
 
-The following script will train the SaShiMi model on the SC09 dataset located at `./datasets/sc09/train/` and save the model checkpoints at `./models/sc09/` after each epoch:
+The script named `train.py` will train the SaShiMi model on the Youtube Mix dataset located at `./datasets/youtube-mix/train/` and save the model checkpoints at `./models/ym-8l/` after each epoch:
+```bash
+python3 train.py
+```
+We used variations of `train.py` for the ablation experiments.
+
+`train_sc09.py` is similar to `train.py`, but it will use the SC09 dataset located at `./datasets/sc09/train/` and save the model checkpoints at `./models/sc09/`.
 ```bash
 python3 train_sc09.py
 ```
-When it's first run, it will begin the training from scratch and continue indefinitely until a keyboard interrupt occurs.
-In the successive runs, it will load the latest saved checkpoint and continue.
 
-The script doesn't have a command line interface, nor is it configurable via other config files.
-Since the script is really simple, it's intended to be modified.
-For example, you can interrupt the training at any time and change the learning rate by modifying line 66:
+In the first run, these scripts will begin the training from scratch and continue indefinitely until a keyboard interrupt occurs.
+In the successive runs, they will load the latest saved checkpoint and continue.
+
+These scripts don't have a command line interface, nor are they configurable via other config files. Since the scripts are really simple, they are intended to be modified.
+For example, you can interrupt the training at any time and change the learning rate by modifying the following part:
 ```python
 # Update LR
 for group in optimizer.param_groups:
