@@ -18,3 +18,15 @@ Based on these, our future work plan is:
 - Train with different hyperparameters and optimizers.
 - Train for longer durations if our resources allow.
 - If all else fails, train on a different dataset. In particular, SC09 may be simpler.
+
+—— version 2 submission ——
+
+With an 8-layer SaShiMi model, we managed to achieve an NLL of 1.325 (in base 2) in our target dataset after 160 epochs.
+For comparison, the result reported in the paper is 1.294.
+Although our result is slightly higher, the model in the paper was trained longer (600K steps on page 19, which would be about 400 epochs in our setup).
+We believe it's reasonable to expect that our model can achieve the same or better NLL value with longer training and/or better hyperparameter choices.
+Furthermore, our generated samples are similar to the ones provided by the authors.
+Therefore, we think that we've successfully reproduced the paper.
+
+We've made many critical changes and bugfixes since the version 1 submission.
+These are explained in the "Challenges" section of main.ipynb in detail.
