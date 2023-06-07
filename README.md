@@ -49,7 +49,7 @@ pip3 install pykeops[full]
 
 ## Downloading the Data
 
-Due to their large size, YouTube Mix dataset and pre-trained models are not included in this repository.
+[This Hugging Face repository](https://huggingface.co/necrashter/SaShiMi-796) contains the pre-trained models together with the YouTube Mix dataset, which are not included in this repository due to their large file sizes.
 To download these, you can simply run `download_data.sh`.
 `wget` and `unzip` programs must be installed.
 
