@@ -7,7 +7,7 @@ from torch import nn
 from . import cauchy
 
 
-def init_HiPPO(signal_dim: int, state_dim: int):
+def init_HiPPO(state_dim: int):
     """
     Initialize the A and B tensors of HiPPO (High-Order Polynomial Projection Operator).
 
@@ -26,11 +26,10 @@ def init_HiPPO(signal_dim: int, state_dim: int):
             else:
                 A[n, k] = n + 1
     B = torch.sqrt(torch.arange(state_dim) * 2.0 + 1.0).unsqueeze(1)
-    B = torch.cat([B for _ in range(signal_dim)], dim=1)
     return A, B
 
 
-def init_NPLR_HiPPO(signal_dim: int, state_dim: int):
+def init_NPLR_HiPPO(state_dim: int):
     """
     Initialize HiPPO with Normal Plus Low-Rank (NPLR) structure.
     Returns A, P, B where A and B are from init_HiPPO (A is negated).
@@ -44,7 +43,7 @@ def init_NPLR_HiPPO(signal_dim: int, state_dim: int):
     See HiPPO-LegS part of Appendix C.1 in "Efficiently Modeling Long Sequences with
     Structured State Spaces".
     """
-    A, B = init_HiPPO(signal_dim, state_dim)
+    A, B = init_HiPPO(state_dim)
     # A matrix from HiPPO-LegS is negated in Appendix C.1.
     A = A * -1.0
     # Note that in Appendix C.1, they add 0.5 * sqrt(2n+1) * sqrt(2k+1) to each element
@@ -54,7 +53,7 @@ def init_NPLR_HiPPO(signal_dim: int, state_dim: int):
     return A, P, B
 
 
-def init_DPLR_HiPPO(signal_dim: int, state_dim: int):
+def init_DPLR_HiPPO(state_dim: int):
     """
     Initialize HiPPO with Diagonal Plus Low-Rank (DPLR) structure.
     Returns Lambda, V, P, B tensors where
@@ -71,7 +70,7 @@ def init_DPLR_HiPPO(signal_dim: int, state_dim: int):
 
     This is done by diagonalizing the NPLR representation.
     """
-    A, P, B = init_NPLR_HiPPO(signal_dim, state_dim)
+    A, P, B = init_NPLR_HiPPO(state_dim)
 
     # Note that the following equality holds: A = (S + 0.5 I) - P @ P.T
     # Recover (S + 0.5 I) from that equation.
@@ -140,10 +139,10 @@ def discretize_DPLR(Lambda, P, Q, B, C, step, L):
     I = torch.eye(Lambda.size(dim=0), device=Lambda.device)
 
     # Forward discretization
-    A0 = I * (2.0 / step) + A
+    A0 = I * (2.0 / step.reshape(-1, 1, 1)) + A
 
     # Backward discretization
-    D = torch.diag(1.0 / ((2.0 / step) - Lambda))
+    D = torch.diag_embed(1.0 / ((2.0 / step.unsqueeze(-1)) - Lambda))
     A1 = D - (D @ P * (1.0 / (1 + (Qstar @ D @ P))) * Qstar @ D)
 
     # S4 Recurrence
@@ -163,16 +162,12 @@ def conv_kernel_naive(A, B, C, L):
 
     Equation 4 and 5 in "Efficiently Modeling Long Sequences with Structured State Spaces".
     """
-    # Size of B: NxD
-    # Size of C: DxN
-    # Organize their shapes such that D dimension does not play a role in matrix
-    # multiplication C A^i B
-    C2 = C.unsqueeze(1)  # C2: Dx1xN
-    B2 = B.T.unsqueeze(-1)  # B2: DxNx1
+    # C: Dx1xN
+    # B: DxNx1 or 1xNx1
     # The resulting kernel is LxD
-    return torch.cat([
+    return torch.stack([
         # The result of matrix multiplication is Dx1x1
-        (C2 @ torch.linalg.matrix_power(A, i) @ B2).reshape(1, -1)
+        (C @ torch.linalg.matrix_power(A, i) @ B).flatten()
         for i in range(L)
     ])
 
@@ -212,8 +207,11 @@ def conv_kernel_DPLR(Lambda, P, Q, B, C, step, Omega):
         ]
     ]
 
-    g = (2.0 / step) * ((1.0 - Omega) / (1.0 + Omega))
-    # Size of cauchy_denominator: SxN
+    # Shape of Omega: (L)
+    # Shape of step: (signal_dim)
+    g = (2.0 / step.unsqueeze(1)) * ((1.0 - Omega) / (1.0 + Omega))
+    # Shape of g: (signal_dim, L)
+
     # Cauchy dot products
     k00, k01, k10, k11 = cauchy.cauchy_kernel(a0, a1, b0, b1, g, Lambda)
 
@@ -251,15 +249,14 @@ def run_recurrent_SSM(Ab, Bb, Cb, u, x0=None):
 
     Note that the input cannot be a batch.
     """
-    x = x0 if x0 is not None else torch.zeros(Ab.size(dim=0), u.size(dim=-1))
+    x = x0 if x0 is not None else torch.zeros(Ab.size(dim=-1), 1)
     x = x.to(Ab.dtype)
     u = u.to(Ab.dtype)
     X, Y = [], []
-    Ct = Cb.T
     for u_k in u:
-        x = Ab @ x + Bb * u_k
-        y = torch.sum(Ct * x, dim=0).flatten()
-        X.append(x)
+        x = Ab @ x + Bb @ u_k.reshape(-1, u_k.size(dim=-1), 1, 1)
+        y = (Cb @ x).flatten()
+        X.append(x.reshape(u_k.size(dim=-1), Ab.size(dim=-1)))
         Y.append(y)
 
     return torch.stack(X), torch.stack(Y)
@@ -283,10 +280,8 @@ class S4Base(nn.Module):
         super().__init__()
         # For parameter tying, we simply set the signal dimension to 1 for A and B matrices.
         # Broadcasting will take care of the rest.
-        Lambda, _, P, B = init_DPLR_HiPPO(1, state_dim)
-        # NOTE: If you use signal_dim here instead of 1, the same A matrix will still be
-        # shared along the signal dimension. Learning a separate A matrix is for each
-        # dimension is not implemented.
+        Lambda, _, P, B = init_DPLR_HiPPO(state_dim)
+        # NOTE: Learning a separate A matrix is for each dimension is not implemented.
 
         # We need to store complex tensors as real tensors, otherwise some optimizers
         # (e.g. Adam) won't work. view_as_real returns an alias tensor with an additional
@@ -299,7 +294,7 @@ class S4Base(nn.Module):
 
         # Standard normal initialization works better than xavier_normal_ initialization
         # on this parameter.
-        C = torch.randn(signal_dim, state_dim, dtype=torch.complex64)
+        C = torch.randn(signal_dim, 1, state_dim, dtype=torch.complex64)
         # nn.init.xavier_normal_(C)
         self.C = nn.parameter.Parameter(torch.view_as_real(C))
 
@@ -307,7 +302,7 @@ class S4Base(nn.Module):
         self.D = nn.parameter.Parameter(torch.randn(signal_dim))
 
         # Step size is a learnable parameter but stored as log.
-        self.log_step = nn.parameter.Parameter(torch.empty(1).uniform_(0.001, 0.1).log())
+        self.log_step = nn.parameter.Parameter(torch.empty(signal_dim).uniform_(0.001, 0.1).log())
 
         # The roots of unity is cached in order to compute the convolution kernel faster.
         # Note that it's a buffer, not a parameter. It won't be trained.
@@ -389,14 +384,18 @@ class S4Base(nn.Module):
         signal to output signal one sample at a time.
         """
         Ab, Bb, Cb = self.discretize(self.sequence_length)
-        Ct = Cb.T
+        # Shape of Ab: torch.Size([signal, state, state])
+        # Shape of Bb: torch.Size([signal, state, 1])
+        # Shape of Ct: torch.Size([state, signal, signal])
         device = next(self.parameters()).device
-        x = torch.zeros(Ab.size(dim=0), Bb.size(dim=-1), device=device, dtype=Ab.dtype)
+        x = torch.zeros(Ab.size(dim=-1), 1, device=device, dtype=Ab.dtype)
+        # Shape of x: (batch, signal, state, 1)
 
         def f(u):
             nonlocal x
-            x = Ab @ x + Bb * u
-            y = torch.sum(Ct * x, dim=-2).unsqueeze(-2)
-            return y.real + self.D * u
+            x = Ab @ x + Bb @ u.reshape(-1, u.size(dim=-1), 1, 1).type(Bb.dtype)
+            y = (Cb @ x).real
+            # Shape of y: (batch, signal, 1, 1)
+            return y.reshape_as(u) + self.D * u
 
         return f

@@ -6,10 +6,10 @@ from . import cauchy
 
 class TestS4Components(unittest.TestCase):
     def test_HiPPO_naive_DPLR(self):
-        A, _ = init_HiPPO(1, 4)
+        A, _ = init_HiPPO(4)
         A = A.to(torch.complex64)
 
-        Lambda, V, P, _ = init_DPLR_HiPPO(1, 4)
+        Lambda, V, P, _ = init_DPLR_HiPPO(4)
         Ar = V @ (torch.diag(Lambda) - P.unsqueeze(1) @ P.unsqueeze(1).conj().T) @ V.conj().T
         self.assertTrue(torch.allclose(Ar, -A, atol=1e-5, rtol=1e-5))
 
@@ -20,8 +20,8 @@ class TestS4Components(unittest.TestCase):
         """
         Check whether the NPLR and DPLR representations of HiPPO are equivalent.
         """
-        A2, P, _ = init_NPLR_HiPPO(1, 8)
-        Lambda, V, Pc, _ = init_DPLR_HiPPO(1, 8)
+        A2, P, _ = init_NPLR_HiPPO(8)
+        Lambda, V, Pc, _ = init_DPLR_HiPPO(8)
         Vc = V.conj().T
         P = P.unsqueeze(1)
         Pc = Pc.unsqueeze(1)
@@ -38,8 +38,8 @@ class TestS4Components(unittest.TestCase):
         Test whether conv_kernel_DPLR is equivalent to conv_kernel_naive.
         """
         L = 16
-        step = 1.0 / L
-        Lambda, _, P, B = init_DPLR_HiPPO(1, 4)
+        step = torch.tensor([1.0 / L])
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
 
         # Discretize HiPPO
         A = torch.diag(Lambda) - P.unsqueeze(1) @ P.unsqueeze(1).conj().T
@@ -60,7 +60,7 @@ class TestS4Components(unittest.TestCase):
         The result of convolution must be equivalent to the recurrent method for a generic SSM.
         """
         L = 16
-        Lambda, _, P, B = init_DPLR_HiPPO(1, 4)
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
 
         # Discretize HiPPO
         A = torch.diag(Lambda) - P.unsqueeze(1) @ P.unsqueeze(1).conj().T
@@ -84,8 +84,8 @@ class TestS4Components(unittest.TestCase):
         Test whether the result of convolution is equivalent to the recurrent method in DPLR.
         """
         L = 16
-        step = 1.0 / L
-        Lambda, _, P, B = init_DPLR_HiPPO(1, 4)
+        step = torch.tensor([1.0 / L])
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
         C = torch.randn(1, 4, dtype=torch.complex64)
 
         # Convolution kernel
@@ -138,13 +138,13 @@ class TestS4Components(unittest.TestCase):
         Check whether SSM works with multi dimensional signal.
         """
         L = 16
-        Lambda, _, P, B = init_DPLR_HiPPO(2, 4)
-        C = torch.randn(2, 4, dtype=torch.complex64)
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
+        C = torch.randn(2, 1, 4, dtype=torch.complex64)
         # Discretize HiPPO
         A = torch.diag(Lambda) - P.unsqueeze(1) @ P.unsqueeze(1).conj().T
         Ab, Bb, Cb = discretize_SSM(A, B, C, 1.0 / L)
-        Bb0, Bb1 = Bb[:, 0:1], Bb[:, 1:2]
-        Cb0, Cb1 = Cb[0:1, :], Cb[1:2, :]
+        Bb0, Bb1 = Bb, Bb
+        Cb0, Cb1 = Cb[0:1, :, :], Cb[1:2, :, :]
         # Convolution kernel
         K = conv_kernel_naive(Ab, Bb, Cb, L)
         K0, K1 = K[:, 0:1], K[:, 1:2]
@@ -168,7 +168,7 @@ class TestS4Components(unittest.TestCase):
         self.assertTrue(torch.allclose(ro0.real, co0, atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(ro1.real, co1, atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(torch.cat([ro0, ro1], dim=1), ro, atol=1e-5, rtol=1e-5))
-        self.assertTrue(torch.allclose(torch.cat([so0, so1], dim=-1), so, atol=1e-5, rtol=1e-5))
+        self.assertTrue(torch.allclose(torch.cat([so0, so1], dim=-2), so, atol=1e-5, rtol=1e-5))
 
         self.assertTrue(torch.allclose(co.real, ro.real, atol=1e-5, rtol=1e-5))
         self.assertEqual(co.size(), u.size())
@@ -179,12 +179,12 @@ class TestS4Components(unittest.TestCase):
         Check whether S4 works with multi dimensional signal.
         """
         L = 16
-        step = 1.0 / L
-        Lambda, _, P, B = init_DPLR_HiPPO(2, 4)
-        C = torch.randn(2, 4, dtype=torch.complex64)
+        step = torch.tensor([1.0 / L])
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
+        C = torch.randn(2, 1, 4, dtype=torch.complex64)
         # Parts
-        B0, B1 = B[:, 0:1], B[:, 1:2]
-        C0, C1 = C[0:1, :], C[1:2, :]
+        B0, B1 = B, B
+        C0, C1 = C[0:1, :, :], C[1:2, :, :]
 
         # Convolution kernel
         K  = conv_kernel_DPLR(Lambda, P, P, B, C, step, get_roots_of_unity(L))
@@ -199,10 +199,8 @@ class TestS4Components(unittest.TestCase):
         Ab1, Bb1, Cb1 = discretize_DPLR(Lambda, P, P, B1, C1, step, L)
         self.assertTrue(torch.allclose(Ab, Ab0, atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(Ab0, Ab1, atol=1e-5, rtol=1e-5))
-        self.assertTrue(torch.allclose(Bb0, Bb[:, 0:1], atol=1e-5, rtol=1e-5))
-        self.assertTrue(torch.allclose(Bb1, Bb[:, 1:2], atol=1e-5, rtol=1e-5))
-        self.assertTrue(torch.allclose(Cb0, Cb[0:1, :], atol=1e-5, rtol=1e-5))
-        self.assertTrue(torch.allclose(Cb1, Cb[1:2, :], atol=1e-5, rtol=1e-5))
+        self.assertTrue(torch.allclose(Cb0, Cb[0:1, :, :], atol=1e-5, rtol=1e-5))
+        self.assertTrue(torch.allclose(Cb1, Cb[1:2, :, :], atol=1e-5, rtol=1e-5))
         # Compare convolution kernel computed from recurrent form with the previous one.
         K_naive = conv_kernel_naive(Ab, Bb, Cb, L)
         self.assertTrue(torch.allclose(K_naive.real, K, atol=1e-5, rtol=1e-5))
@@ -222,7 +220,7 @@ class TestS4Components(unittest.TestCase):
         self.assertTrue(torch.allclose(ro0.real, co0, atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(ro1.real, co1, atol=1e-5, rtol=1e-5))
         self.assertTrue(torch.allclose(torch.cat([ro0, ro1], dim=1), ro, atol=1e-5, rtol=1e-5))
-        self.assertTrue(torch.allclose(torch.cat([so0, so1], dim=-1), so, atol=1e-5, rtol=1e-5))
+        self.assertTrue(torch.allclose(torch.cat([so0, so1], dim=-2), so, atol=1e-5, rtol=1e-5))
 
         self.assertTrue(torch.allclose(co.real, ro.real, atol=1e-5, rtol=1e-5))
         self.assertEqual(co.size(), u.size())
@@ -258,8 +256,8 @@ class TestS4Components(unittest.TestCase):
             self.skipTest("PyKeOps is not installed.")
 
         L = 16
-        step = 1.0 / L
-        Lambda, _, P, B = init_DPLR_HiPPO(1, 4)
+        step = torch.tensor([1.0 / L])
+        Lambda, _, P, B = init_DPLR_HiPPO(4)
         C = torch.randn(1, 4, dtype=torch.complex64)
 
         Omega = get_roots_of_unity(L)
