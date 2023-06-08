@@ -3,7 +3,6 @@ from torch import nn
 from S4 import *
 from torchaudio.functional import mu_law_encoding
 from tqdm.auto import tqdm
-import sys
 
 
 def S4Block(signal_dim: int, state_dim: int, sequence_length: int, expansion_factor: int = 2):
